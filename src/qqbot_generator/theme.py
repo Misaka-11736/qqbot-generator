@@ -310,12 +310,24 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
     height: 9px;
 }}
 QComboBox QAbstractItemView {{
-    background: #FFFFFF;
+    background-color: #FFFFFF;
     border: 1px solid {c['line']};
-    border-radius: 10px;
+    border-radius: 0px;
+    padding: 4px;
+    color: {c['ink']};
     selection-background-color: {c['coral_soft']};
     selection-color: {c['coral_dark']};
     outline: none;
+}}
+QComboBox QAbstractItemView::item {{
+    min-height: 28px;
+    padding: 2px 10px;
+    border: none;
+    background: transparent;
+}}
+QComboBox QAbstractItemView::item:selected {{
+    background: {c['coral_soft']};
+    color: {c['coral_dark']};
 }}
 QProgressBar {{
     background: {c['cream2']};

@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QPoint, Qt, QTimer
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtGui import QAction, QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -447,6 +447,14 @@ def run_gui() -> int:
     app.setStyle("Fusion")
     app.setFont(app_font(10))
     app.setStyleSheet(qss())
+    palette = app.palette()
+    palette.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.Window, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#F7F4EC"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#22262E"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#22262E"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#FFFFFF"))
+    app.setPalette(palette)
 
     if paths.needs_location_setup():
         from .widgets.data_dialog import DataDirDialog
