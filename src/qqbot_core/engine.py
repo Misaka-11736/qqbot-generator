@@ -133,7 +133,7 @@ class Engine:
             log.info("收到语音，开始识别")
             await self._deliver(incoming, "我听听…")
             try:
-                src = await asyncio.to_thread(prepare_voice, voices[0], self.cfg.data_dir / "downloads" / "voice")
+                src = await asyncio.to_thread(prepare_voice, voices[0], self.cfg.data_dir / "cache" / "voice")
                 text = await asyncio.to_thread(transcribe, src, self.features.voice_model)
                 log.info("语音识别：%s", text[:80])
                 if incoming.is_group:
@@ -161,7 +161,7 @@ class Engine:
             if spoken:
                 await self._deliver(incoming, "等我清清嗓子…")
                 try:
-                    path = await synthesize(spoken, self.cfg.data_dir / "downloads" / "voice", self.features.voice_name)
+                    path = await synthesize(spoken, self.cfg.data_dir / "cache" / "voice", self.features.voice_name)
                     await self._send_voice(incoming, str(path))
                 except Exception as exc:
                     await self._deliver(incoming, f"语音合成失败：{exc}")
@@ -204,7 +204,7 @@ class Engine:
             await self._deliver(incoming, "识图还没配 Key，去「能力」页填百炼的 Key。")
             return
         await self._deliver(incoming, "我看看…")
-        cache = self.cfg.data_dir / "downloads" / "vision"
+        cache = self.cfg.data_dir / "cache" / "vision"
         frames: list[Path] = []
         notes: list[str] = []
         for item in media[:4]:
@@ -444,7 +444,7 @@ class Engine:
 
     async def _download(self, url: str) -> str:
         try:
-            path = await asyncio.to_thread(download, url, self.cfg.data_dir / "downloads", self.features.download_max_mb)
+            path = await asyncio.to_thread(download, url, self.cfg.data_dir / "cache" / "files", self.features.download_max_mb)
         except (ToolError, OSError) as exc:
             return f"下载失败：{exc}"
         return f"已下载：{path.name}（{path.stat().st_size // 1024} KB）\n{path}"
@@ -454,7 +454,7 @@ class Engine:
             await self._deliver(incoming, "用法：/做图 想写在卡片上的字")
             return
         try:
-            path = await asyncio.to_thread(make_card, text, self.cfg.data_dir / "downloads", self.cfg.bot_name)
+            path = await asyncio.to_thread(make_card, text, self.cfg.data_dir / "cache" / "files", self.cfg.bot_name)
         except Exception as exc:
             await self._deliver(incoming, f"做图失败：{exc}")
             return
@@ -469,7 +469,7 @@ class Engine:
             await self._deliver(incoming, "用法：/做文件 文件名|内容")
             return
         try:
-            path = await asyncio.to_thread(make_file, name.strip(), content, self.cfg.data_dir / "downloads")
+            path = await asyncio.to_thread(make_file, name.strip(), content, self.cfg.data_dir / "cache" / "files")
         except Exception as exc:
             await self._deliver(incoming, f"做文件失败：{exc}")
             return
@@ -511,7 +511,7 @@ class Engine:
         url = await asyncio.to_thread(brave_image, key, query)
         if not url:
             raise ToolError("没搜到合适的图")
-        path = await asyncio.to_thread(download, url, self.cfg.data_dir / "downloads" / "images", 8)
+        path = await asyncio.to_thread(download, url, self.cfg.data_dir / "cache" / "images", 8)
         from PIL import Image
 
         with Image.open(path) as img:
@@ -646,13 +646,13 @@ class Engine:
         if mode in ("voice", "image", "file") and self.link is not None:
             try:
                 if mode == "voice":
-                    path = await synthesize(joined, self.cfg.data_dir / "downloads" / "voice", self.features.voice_name)
+                    path = await synthesize(joined, self.cfg.data_dir / "cache" / "voice", self.features.voice_name)
                     await self._send_voice(incoming, str(path))
                 elif mode == "image":
                     path = await self._image_for(text, joined)
                     await self._send_media(incoming, "image", str(path), caption=joined[:80])
                 else:
-                    path = make_file("回复.txt", joined, self.cfg.data_dir / "downloads")
+                    path = make_file("回复.txt", joined, self.cfg.data_dir / "cache" / "files")
                     await self._send_media(incoming, "file", str(path))
                 self.stats["replied"] += 1
                 self.last_replies.append(joined)

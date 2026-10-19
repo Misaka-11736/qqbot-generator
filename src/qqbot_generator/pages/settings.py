@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qqbot_core import cache
+
 from .. import paths
 from ..services import autostart, selftest_service
 from ..theme import COLORS
@@ -35,6 +37,7 @@ class SettingsPage(BasePage):
     def build(self) -> None:
         self._build_selftest()
         self._build_data()
+        self._build_cache()
         self._build_startup()
         self._build_danger()
 
@@ -192,6 +195,52 @@ class SettingsPage(BasePage):
         self.ctx.toast(f"清掉 {removed} 个记忆文件" if removed else "本来就没有记忆文件")
 
     # ---------- 自启 ----------
+
+    # ---------- 缓存 ----------
+
+    def _build_cache(self) -> None:
+        card = Card()
+        title = QLabel("缓存")
+        title.setObjectName("cardTitle")
+        card.add(title)
+        card.add(_hint("搜索图片、视频、文档、语音和生成的文件都在这里，可随时清理，不影响配置和记忆。"))
+        self.cache_label = QLabel("")
+        self.cache_label.setObjectName("hint")
+        card.add(self.cache_label)
+        row = QHBoxLayout()
+        refresh = small_button("刷新", "secondary")
+        refresh.clicked.connect(self._refresh_cache)
+        row.addWidget(refresh)
+        open_btn = small_button("打开缓存目录", "secondary")
+        open_btn.clicked.connect(self._open_cache)
+        row.addWidget(open_btn)
+        clear_btn = small_button("清理缓存", "danger")
+        clear_btn.clicked.connect(self._clear_cache)
+        row.addWidget(clear_btn)
+        row.addStretch(1)
+        card.add_layout(row)
+        self.add(card)
+        self._refresh_cache()
+
+    def _refresh_cache(self) -> None:
+        files, size = cache.stats(paths.data_dir())
+        self.cache_label.setText(f"当前占用 {size / 1024 / 1024:.1f} MB，共 {files} 个文件")
+
+    def _open_cache(self) -> None:
+        target = cache.cache_dir(paths.data_dir())
+        target.mkdir(parents=True, exist_ok=True)
+        os.startfile(target)
+
+    def _clear_cache(self) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle("清理缓存")
+        box.setText("删除所有已下载/生成的图片、视频、文档和语音？\n配置、聊天记忆、NapCat 不受影响。")
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if box.exec() != QMessageBox.StandardButton.Yes:
+            return
+        removed, errors = cache.clear(paths.data_dir())
+        self._refresh_cache()
+        self.ctx.toast(f"已清理 {removed} 项" + (f"，{len(errors)} 项被占用" if errors else ""))
 
     def _build_startup(self) -> None:
         card = Card()
