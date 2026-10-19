@@ -187,6 +187,8 @@ class CapabilitiesPage(BasePage):
         self.voice_thr = _slider(f.voice_threshold)
         grid.addWidget(Field("图片判定门槛（低=更容易发图）", self.image_thr), 3, 0)
         grid.addWidget(Field("语音判定门槛（低=更容易语音）", self.voice_thr), 3, 1)
+        self.search_thr = _slider(f.search_threshold)
+        grid.addWidget(Field("搜索判定门槛（低=更容易搜索）", self.search_thr), 4, 0)
         style.add_layout(grid)
         test_row = QHBoxLayout()
         self.test_edit = QLineEdit()
@@ -248,7 +250,11 @@ class CapabilitiesPage(BasePage):
 
         text = self.test_edit.text().strip()
         mode = choose_modality(text, self.voice_thr.value(), self.image_thr.value())
-        label = {"text": "文字", "image": "图片", "voice": "语音", "file": "文件"}.get(mode, mode)
+        from qqbot_core.modality import search_query
+
+        if search_query(text, self.search_thr.value()):
+            mode = "search"
+        label = {"text": "文字", "image": "图片", "voice": "语音", "file": "文件", "search": "搜索"}.get(mode, mode)
         self.test_button.stop_busy()
         mark_refreshed(self.test_result, f"当前会：{label}")
 
@@ -265,6 +271,7 @@ class CapabilitiesPage(BasePage):
         f.catchphrase = self.phrase_edit.text().strip()
         f.reply_format = self.format_combo.currentData()
         f.vision_model = self.model_combo.currentText()
+        f.search_threshold = self.search_thr.value()
         f.image_threshold = self.image_thr.value()
         f.voice_threshold = self.voice_thr.value()
         f.voice_model = self.voice_combo.currentText()

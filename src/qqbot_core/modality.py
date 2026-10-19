@@ -36,7 +36,9 @@ def choose_modality(user_text: str, voice_threshold: int = 50, image_threshold: 
     if any(word in text for word in FILE_HINTS):
         return "file"
     image_score = 0
-    if re.search(r"(发|来|给|整|画|找).{0,6}(图|照片|图片|表情包)", text) or re.search(r"(长什么样|长啥样|什么样子|啥样子)", text):
+    if re.search(r"(发|来|给|整|画|找)(张|个|只|条|幅)", text):
+        image_score = 85
+    elif re.search(r"(发|来|给|整|画|找).{0,6}(图|照片|图片|表情包)", text) or re.search(r"(长什么样|长啥样|什么样子|啥样子)", text):
         image_score = 90
     elif any(word in text for word in ("图", "照片", "图片", "表情包", "截图")):
         image_score = 60
@@ -52,3 +54,28 @@ def choose_modality(user_text: str, voice_threshold: int = 50, image_threshold: 
     if image_score >= image_threshold and image_score > 0:
         return "image"
     return "text"
+
+
+SEARCH_VERBS = r"(搜索一下|搜一下|搜搜|搜索|搜|查一下|查查|查找|查询|查)"
+
+
+def search_query(text: str, threshold: int = 50) -> str:
+    """返回适合搜索的关键词；空字符串表示不触发。"""
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    score = 0
+    match = re.search(r"^(?:你|现在|帮我|给我|替我|能不能|可以|麻烦)?\s*" + SEARCH_VERBS + r"\s*[:：,，]?\s*(.+)$", raw)
+    if match:
+        score = 90
+        query = match.group(2)
+    elif re.search(r"(帮我|给我|能不能|可以)?\s*(搜|查)(一下|一搜|搜看)?", raw):
+        score = 60
+        query = re.sub(r".*?(搜|查)(一下|一搜|搜看)?", "", raw, count=1)
+    elif re.search(r"(找一下|找找|了解一下|什么情况|最新消息|新闻)", raw):
+        score = 40
+        query = raw
+    else:
+        return ""
+    query = query.strip(" 的：:，,。！!？?")
+    return query if score >= threshold and len(query) >= 2 else ""

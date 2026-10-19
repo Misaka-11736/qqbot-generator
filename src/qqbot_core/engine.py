@@ -23,7 +23,7 @@ from .llm import LLMError
 from .media import extract_frames, media_sources, read_text_attachment
 from .memory import Memory
 from .message import Incoming, parse_event
-from .modality import choose_modality
+from .modality import choose_modality, search_query
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .plugins import PluginManager
 from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
@@ -244,18 +244,10 @@ class Engine:
     async def _natural_intent(self, text: str, incoming: Incoming) -> bool:
         """不用 / 指令：直接说“搜一下…”也能触发。"""
         compact = text.strip()
-        if compact.startswith(("搜不到", "搜不着", "搜了", "搜过", "搜完")):
-            return False
-        search = re.match(
-            r"^(?:你|现在|帮我|给我|替我|能不能|可以|麻烦)?\s*"
-            r"(?:搜索一下|搜一下|搜搜看|搜搜|搜(?=\s|[:：,，])|查一下|查查)\s*[:：,，]?\s*(.+)$",
-            compact,
-            re.I,
-        )
-        if search and self.features.search:
-            query = search.group(1).strip(" ：:，,")
-            if not query:
-                return False
+        if await self._compound_tasks(compact, incoming):
+            return True
+        query = search_query(compact, self.features.search_threshold)
+        if query and self.features.search:
             log.info("自然语言搜索：%s", query[:60])
             await self._deliver(incoming, "我去网上看看…")
             await self._deliver(incoming, await self._search(query))
@@ -277,6 +269,21 @@ class Engine:
             if url:
                 await self._deliver(incoming, await self._download(url.group(0)))
                 return True
+        return False
+
+    async def _compound_tasks(self, text: str, incoming: Incoming) -> bool:
+        parts = [p.strip() for p in re.split(r"(?:然后|接着|再|顺便|并且|，|,)", text) if p.strip()]
+        if len(parts) < 2:
+            return False
+        queries = [search_query(p, self.features.search_threshold) for p in parts]
+        query = next((q for q in queries if q), "")
+        wants_image = any(choose_modality(p, self.features.voice_threshold, self.features.image_threshold) == "image" for p in parts)
+        if query and wants_image and self.features.search:
+            log.info("拆解任务：搜索 %s → 发图", query[:40])
+            await self._deliver(incoming, "我分两步：先查，再找张图。")
+            path = await self._image_for(query, "给你找的")
+            await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
+            return True
         return False
 
     async def _auto_search_loop(self) -> None:

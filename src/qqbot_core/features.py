@@ -40,6 +40,7 @@ class FeatureConfig:
     reply_format: str = "auto"  # auto / text / image / voice
     voice_threshold: int = 50  # 越高越难触发语音
     image_threshold: int = 50  # 越高越难触发图片
+    search_threshold: int = 50  # 越高越难触发搜索
 
 
 STYLE_LABELS = {
