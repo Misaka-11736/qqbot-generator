@@ -18,8 +18,10 @@ class FeatureConfig:
     classify: bool = True  # 群聊内容分类
     vision: bool = True  # 识图
     vision_model: str = "qwen3-vl-plus"
-    voice_in: bool = False  # v3.2
-    voice_out: bool = False  # v3.2
+    voice_in: bool = True  # 语音识别
+    voice_model: str = "small"
+    voice_name: str = "zh-CN-XiaoxiaoNeural"
+    voice_out: bool = True  # 语音合成
 
     search_daily_limit: int = 50
     download_max_mb: int = 20

@@ -277,3 +277,8 @@ class OneBotLink:
         action = "upload_group_file" if target_type == "group" else "upload_private_file"
         key = "group_id" if target_type == "group" else "user_id"
         return await self.call(action, {key: target_id, "file": str(path), "name": name or Path(path).name})
+
+
+    async def send_voice(self, target_type: str, target_id: int, path: str) -> Any:
+        uri = "file:///" + str(path).replace("\\", "/").lstrip("/")
+        return await self.send_segments(target_type, target_id, [{"type": "record", "data": {"file": uri}}])

@@ -25,6 +25,8 @@ from .tools import ToolError, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
 from .media import extract_frames, media_sources, read_text_attachment
 from .vision import look_at_frames, looks_like_image_question
+from .voice import prepare as prepare_voice
+from .voice import synthesize, transcribe, voice_sources, wants_voice
 
 log = logging.getLogger("qqbot")
 
@@ -120,6 +122,20 @@ class Engine:
                 log.warning("归档失败：%s", exc)
 
         text = incoming.text.strip()
+        voices = voice_sources(incoming.segments)
+        if voices and self.features.voice_in:
+            log.info("收到语音，开始识别")
+            await self._deliver(incoming, "我听听…")
+            try:
+                src = await asyncio.to_thread(prepare_voice, voices[0], self.cfg.data_dir / "downloads" / "voice")
+                text = await asyncio.to_thread(transcribe, src, self.features.voice_model)
+                log.info("语音识别：%s", text[:80])
+                if incoming.is_group:
+                    incoming.at_me = True
+            except Exception as exc:  # noqa: BLE001
+                log.warning("语音识别失败：%s", exc)
+                await self._deliver(incoming, f"这段语音我没听清：{exc}")
+                return
         media = media_sources(incoming.segments)
         if media:
             if not self.features.vision:
@@ -131,6 +147,17 @@ class Engine:
                 return
         if not text:
             return
+
+        if self.features.voice_out and wants_voice(text):
+            spoken = re.sub(r"(用语音|发条语音|发个语音|语音说|念一下|读一下|说给我听|来段语音)", "", text).strip(" ：:，,")
+            if spoken:
+                await self._deliver(incoming, "等我清清嗓子…")
+                try:
+                    path = await synthesize(spoken, self.cfg.data_dir / "downloads" / "voice", self.features.voice_name)
+                    await self._send_voice(incoming, str(path))
+                except Exception as exc:  # noqa: BLE001
+                    await self._deliver(incoming, f"语音合成失败：{exc}")
+                return
 
         if await self._natural_intent(text, incoming):
             return
@@ -432,6 +459,15 @@ class Engine:
             await self._deliver(incoming, f"做文件失败：{exc}")
             return
         await self._send_media(incoming, "file", str(path), caption="")
+
+    async def _send_voice(self, incoming: Incoming, path: str) -> None:
+        if self.link is None:
+            await self._deliver(incoming, f"[语音] {path}")
+            return
+        try:
+            await self.link.send_voice("group" if incoming.is_group else "private", incoming.target_id, path)
+        except Exception as exc:  # noqa: BLE001
+            await self._deliver(incoming, f"语音发送失败：{exc}")
 
     async def _send_media(self, incoming: Incoming, kind: str, path: str, caption: str = "") -> None:
         target_type = "group" if incoming.is_group else "private"

@@ -69,20 +69,15 @@ class CapabilitiesPage(BasePage):
             ("gen_file", "生成文件"),
             ("classify", "内容分类"),
             ("vision", "图片/视频/文件"),
+            ("voice_in", "语音识别"),
+            ("voice_out", "语音合成"),
         ]
         for index, (name, label) in enumerate(items):
             box = QCheckBox(label)
             box.setChecked(bool(getattr(f, name)))
             self.checks[name] = box
             grid.addWidget(box, index // 4, index % 4)
-        for index, (name, label) in enumerate(
-            [("voice_in", "语音识别（v3.2）"), ("voice_out", "语音合成（v3.2）")]
-        ):
-            box = QCheckBox(label)
-            box.setEnabled(False)
-            box.setChecked(bool(getattr(f, name)))
-            self.checks[name] = box
-            grid.addWidget(box, 2, index)
+        # v3.2 语音开关已并入上方网格
         switch.add_layout(grid)
         self.add(switch)
 
@@ -104,6 +99,11 @@ class CapabilitiesPage(BasePage):
         qwen_saved = bool(get_key(self.ctx.data_dir, "qwen"))
         self.qwen_edit.setPlaceholderText("已保存，留空则不修改" if qwen_saved else "粘贴百炼 API Key（v3.1 用）")
         row.addWidget(Field("百炼 Qwen Key", self.qwen_edit), 0, 1)
+        self.voice_combo = QComboBox()
+        self.voice_combo.addItems(["small", "base", "tiny"])
+        idx_voice = self.voice_combo.findText(f.voice_model)
+        if idx_voice >= 0:
+            self.voice_combo.setCurrentIndex(idx_voice)
         self.model_combo = QComboBox()
         self.model_combo.addItems(["qwen3-vl-plus", "qwen3-vl-max", "qwen-vl-max", "qwen-vl-plus"])
         idx_model = self.model_combo.findText(f.vision_model)
@@ -124,6 +124,9 @@ class CapabilitiesPage(BasePage):
         self.summary_limit.setValue(f.summary_max)
         self.summary_limit.setSingleStep(50)
         row.addWidget(Field("总结最多条数", self.summary_limit), 2, 1)
+        self.voice_name = QLineEdit(f.voice_name)
+        row.addWidget(Field("Edge-TTS 音色", self.voice_name), 1, 0)
+        row.addWidget(Field("Whisper 模型", self.voice_combo), 1, 1)
         keys.add_layout(row)
         self.add(keys)
 
@@ -229,6 +232,8 @@ class CapabilitiesPage(BasePage):
         f.catchphrase = self.phrase_edit.text().strip()
         f.reply_format = self.format_combo.currentData()
         f.vision_model = self.model_combo.currentText()
+        f.voice_model = self.voice_combo.currentText()
+        f.voice_name = self.voice_name.text().strip() or "zh-CN-XiaoxiaoNeural"
         f.auto_search = self.auto_check.isChecked()
         f.auto_search_interval = self.auto_interval.value()
         f.auto_search_target = self.auto_target.text().strip()

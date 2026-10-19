@@ -160,6 +160,8 @@ class Config:
             f"vision_model = {_q(self.features.vision_model)}",
             f"voice_in = {str(self.features.voice_in).lower()}",
             f"voice_out = {str(self.features.voice_out).lower()}",
+            f"voice_model = {_q(self.features.voice_model)}",
+            f"voice_name = {_q(self.features.voice_name)}",
             f"search_daily_limit = {self.features.search_daily_limit}",
             f"download_max_mb = {self.features.download_max_mb}",
             f"summary_max = {self.features.summary_max}",
@@ -288,6 +290,8 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     cfg.features.catchphrase = str(_pick(feat, "catchphrase", cfg.features.catchphrase))
     cfg.features.reply_format = str(_pick(feat, "reply_format", cfg.features.reply_format))
     cfg.features.vision_model = str(_pick(feat, "vision_model", cfg.features.vision_model))
+    cfg.features.voice_model = str(_pick(feat, "voice_model", cfg.features.voice_model))
+    cfg.features.voice_name = str(_pick(feat, "voice_name", cfg.features.voice_name))
 
     persona = raw.get("persona", {})
     cfg.persona.preset = _pick(persona, "preset", cfg.persona.preset)
