@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -242,7 +242,12 @@ class CapabilitiesPage(BasePage):
             self.qwen_edit.clear()
             self.qwen_edit.setPlaceholderText("已保存，留空则不修改")
         self.ctx.save_config()
-        self.ctx.toast("能力配置已保存")
+        if self.ctx.process.running:
+            self.ctx.process.stop()
+            QTimer.singleShot(1500, self.ctx.process.start)
+            self.ctx.toast("已保存，正在重启机器人…")
+        else:
+            self.ctx.toast("能力配置已保存")
         self.on_show()
 
 

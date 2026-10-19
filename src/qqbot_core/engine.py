@@ -82,6 +82,14 @@ class Engine:
         if self_id:
             self.self_id = self_id
         log.info("登录账号：%s（%s）", nickname or "?", self.self_id)
+        log.info(
+            "能力：识图=%s(%s) 搜索=%s 归档=%s 自动搜索=%s",
+            self.features.vision,
+            self.features.vision_model,
+            self.features.search,
+            self.features.archive,
+            self.features.auto_search,
+        )
         if self.features.auto_search and (self._auto_task is None or self._auto_task.done()):
             self._auto_task = asyncio.create_task(self._auto_search_loop())
 
@@ -112,9 +120,14 @@ class Engine:
 
         text = incoming.text.strip()
         images = image_sources(incoming.segments)
-        if self.features.vision and images and self._want_vision(incoming, text):
-            await self._vision_reply(incoming, text, images[0])
-            return
+        if images:
+            if not self.features.vision:
+                log.info("收到图片，但识图开关是关的")
+            elif not self._want_vision(incoming, text):
+                log.info("收到图片，但没带问题也没 @，跳过识图：%s", text[:30])
+            else:
+                await self._vision_reply(incoming, text, images[0])
+                return
         if not text:
             return
 
@@ -149,11 +162,11 @@ class Engine:
         return looks_like_image_question(text)
 
     async def _vision_reply(self, incoming: Incoming, text: str, url: str) -> None:
+        log.info("识图触发：%s", (text or "无文字")[:60])
         key = get_key(self.cfg.data_dir, "qwen")
         if not key:
             await self._deliver(incoming, "识图还没配 Key，去「能力」页填百炼的 Key。")
             return
-        log.info("识图：%s", (text or "无文字")[:60])
         await self._deliver(incoming, "我看看…")
         answer = await asyncio.to_thread(
             look_at_image,
