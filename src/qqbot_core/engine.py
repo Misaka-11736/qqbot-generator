@@ -23,7 +23,8 @@ from .message import Incoming, parse_event
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .tools import ToolError, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
-from .vision import image_sources, look_at_image, looks_like_image_question
+from .media import extract_frames, media_sources, read_text_attachment
+from .vision import look_at_frames, looks_like_image_question
 
 log = logging.getLogger("qqbot")
 
@@ -119,14 +120,14 @@ class Engine:
                 log.warning("归档失败：%s", exc)
 
         text = incoming.text.strip()
-        images = image_sources(incoming.segments)
-        if images:
+        media = media_sources(incoming.segments)
+        if media:
             if not self.features.vision:
-                log.info("收到图片，但识图开关是关的")
+                log.info("收到媒体，但识图开关是关的")
             elif not self._want_vision(incoming, text):
-                log.info("收到图片，但没带问题也没 @，跳过识图：%s", text[:30])
+                log.info("收到媒体，但没带问题也没 @，跳过：%s", text[:30])
             else:
-                await self._vision_reply(incoming, text, images[0])
+                await self._vision_reply(incoming, text, media)
                 return
         if not text:
             return
@@ -161,21 +162,47 @@ class Engine:
             return True
         return looks_like_image_question(text)
 
-    async def _vision_reply(self, incoming: Incoming, text: str, url: str) -> None:
-        log.info("识图触发：%s", (text or "无文字")[:60])
+    async def _vision_reply(self, incoming: Incoming, text: str, media: list[dict]) -> None:
+        log.info("识图/媒体触发：%s（%s）", (text or "无文字")[:60], ",".join(m["kind"] for m in media))
         key = get_key(self.cfg.data_dir, "qwen")
         if not key:
             await self._deliver(incoming, "识图还没配 Key，去「能力」页填百炼的 Key。")
             return
         await self._deliver(incoming, "我看看…")
-        answer = await asyncio.to_thread(
-            look_at_image,
-            url,
-            key,
-            self.features.vision_model,
-            text,
-            self.cfg.data_dir / "downloads" / "vision",
-        )
+        cache = self.cfg.data_dir / "downloads" / "vision"
+        frames: list[Path] = []
+        notes: list[str] = []
+        for item in media[:4]:
+            if item["kind"] == "file":
+                extra = await asyncio.to_thread(read_text_attachment, item, cache)
+                if extra:
+                    notes.append(extra)
+                continue
+            got, note = await asyncio.to_thread(extract_frames, item, cache, 3)
+            frames.extend(got)
+            if note:
+                notes.append(note)
+        answer = ""
+        if frames:
+            answer = await asyncio.to_thread(
+                look_at_frames,
+                frames,
+                key,
+                self.features.vision_model,
+                text,
+                "\n".join(notes),
+            )
+        elif notes:
+            answer = await self.llm.complete(
+                [
+                    {"role": "system", "content": "对方发来一个文件。用 2~3 句口语说文件大概是什么、有什么值得注意的，不列点、不贴链接。"},
+                    {"role": "user", "content": "\n".join(notes)[:3000]},
+                ],
+                temperature=0.4,
+                max_tokens=260,
+            )
+        else:
+            answer = "这个文件/视频我这边解析不了。"
         for part in split_text(answer, limit=600):
             await self._deliver(incoming, part)
 

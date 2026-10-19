@@ -129,7 +129,57 @@ def looks_like_image_question(text: str) -> bool:
         return False
     return bool(
         re.search(
-            r"(这是啥|这是什么|什么图|哪张|哪个|谁|什么游戏|什么动漫|什么角色|表情|截图|图里|这张|这图|看看|识别|认一下|你看|干嘛的|什么意思)",
+            r"(这是啥|这是什么|什么图|哪张|哪个|谁|什么游戏|什么动漫|什么角色|表情|截图|视频|文件|附件|这段|讲啥|什么内容|图里|这张|这图|看看|识别|认一下|你看|干嘛的|什么意思)",
             text,
         )
     )
+
+
+def look_at_frames(frames: list[Path], key: str, model: str, question: str, extra: str = "") -> str:
+    if not key:
+        return "还没配百炼 Key，去「能力」页填一下。"
+    if not frames:
+        return "没拿到能看的画面。"
+    content: list[dict] = [{"type": "text", "text": f"对方的话：{question or '看看这些内容'}" + (f"\n文件内容：{extra[:3000]}" if extra else "")}]
+    for frame in frames[:3]:
+        try:
+            content.append({"type": "image_url", "image_url": {"url": _data_uri(frame)}})
+        except Exception:  # noqa: BLE001
+            continue
+    if len(content) == 1:
+        return "画面打不开。"
+    payload = {
+        "model": model or "qwen3-vl-plus",
+        "messages": [
+            {
+                "role": "system",
+                "content": "你在 QQ 里收到对方发的图片/表情/GIF/视频截图/文件。用 2~4 句口语说清是什么、对方可能想问什么；"
+                "不列点、不贴链接、不说“这张图片显示”；看不清就直说。",
+            },
+            {"role": "user", "content": content},
+        ],
+        "temperature": 0.6,
+        "max_tokens": 300,
+    }
+    req = urllib.request.Request(
+        VISION_BASE,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:200]
+        if exc.code in (403, 404) and model != "qwen3-vl-plus":
+            return look_at_frames(frames, key, "qwen3-vl-plus", question, extra)
+        return f"识图接口报错（HTTP {exc.code}）：{body}"
+    except OSError as exc:
+        return f"识图失败：{exc}"
+    try:
+        text = str(data["choices"][0]["message"]["content"])
+    except (KeyError, IndexError, TypeError):
+        return "识图没返回内容。"
+    text = re.sub(r"https?://\S+", "", text)
+    return re.sub(r"\n{2,}", "\n", text).strip()[:500]

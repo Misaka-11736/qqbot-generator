@@ -68,7 +68,7 @@ class CapabilitiesPage(BasePage):
             ("gen_image", "生成图片"),
             ("gen_file", "生成文件"),
             ("classify", "内容分类"),
-            ("vision", "图片理解"),
+            ("vision", "图片/视频/文件"),
         ]
         for index, (name, label) in enumerate(items):
             box = QCheckBox(label)
