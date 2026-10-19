@@ -113,8 +113,7 @@ class Engine:
         if not text:
             return
 
-        addressed = (not incoming.is_group) or incoming.at_me or (incoming.reply_id in self._sent_set)
-        if addressed and await self._natural_intent(text, incoming):
+        if await self._natural_intent(text, incoming):
             return
 
         prefix = self.cfg.chat.prefixes
@@ -140,17 +139,28 @@ class Engine:
     async def _natural_intent(self, text: str, incoming: Incoming) -> bool:
         """不用 / 指令：直接说“搜一下…”也能触发。"""
         compact = text.strip()
-        search = re.match(r"^(?:帮我|给我|替我)?\s*(?:搜索一下|搜一下|搜搜|搜索|搜|查一下|查查|查)\s*[:：,，]?\s*(.*)$", compact, re.I)
+        if compact.startswith(("搜不到", "搜不着", "搜了", "搜过", "搜完")):
+            return False
+        search = re.match(
+            r"^(?:你|现在|帮我|给我|替我|能不能|可以|麻烦)?\s*"
+            r"(?:搜索一下|搜一下|搜搜看|搜搜|搜(?=\s|[:：,，])|查一下|查查)\s*[:：,，]?\s*(.+)$",
+            compact,
+            re.I,
+        )
         if search and self.features.search:
             query = search.group(1).strip(" ：:，,")
             if not query:
-                await self._deliver(incoming, "搜什么？给我个关键词。")
-            else:
-                await self._deliver(incoming, "我去网上看看…")
-                await self._deliver(incoming, await self._search(query))
+                return False
+            log.info("自然语言搜索：%s", query[:60])
+            await self._deliver(incoming, "我去网上看看…")
+            await self._deliver(incoming, await self._search(query))
             return True
-        summary = re.match(r"^(?:帮我|给我)?\s*(?:总结|汇总)(?:一下|下)?(?:\s*(?:最近)?\s*(\d{1,4})\s*条)?\s*$", compact)
+        summary = re.match(
+            r"^(?:你|帮我|给我)?\s*(?:总结|汇总)(?:一下|下)?(?:\s*(?:最近)?\s*(\d{1,4})\s*条)?\s*$",
+            compact,
+        )
         if summary and self.features.summarize:
+            log.info("自然语言总结：%s 条", summary.group(1) or self.features.summary_max)
             count = int(summary.group(1) or self.features.summary_max)
             count = max(10, min(count, self.features.summary_max))
             await self._deliver(incoming, "正在翻记录，等我一下…")
