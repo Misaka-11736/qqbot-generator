@@ -197,7 +197,7 @@ class CapabilitiesPage(BasePage):
         style.add_layout(test_row)
         self.test_result = QLabel("当前会：—")
         self.test_result.setObjectName("hint")
-        style.addWidget(self.test_result)
+        style.add(self.test_result)
         self.add(style)
 
         use = Card()
