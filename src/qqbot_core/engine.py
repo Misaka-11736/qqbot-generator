@@ -304,19 +304,31 @@ class Engine:
         self._search_used += 1
         if not results:
             return "没搜到结果。"
-        context = "\n".join(f"{i + 1}. {r['title']} {r['url']}\n{r['description']}" for i, r in enumerate(results))
+        context = "\n".join(f"- {r['title']}：{r['description']}" for r in results)
         try:
             answer = await self.llm.complete(
                 [
-                    {"role": "system", "content": "根据搜索结果回答问题，中文，简洁；不要编造，最后列出用到的链接。"},
-                    {"role": "user", "content": f"问题：{query}\n\n搜索结果：\n{context[:8000]}"},
+                    {
+                        "role": "system",
+                        "content": (
+                            "你刚随手在网上查了一下，现在用聊天的方式把结果告诉对方。"
+                            "要求：2~4 句口语，直接说结论；不要列点、不要标题、不要贴链接、"
+                            "不要说“根据搜索结果/来源/资料显示”；不要重复对方的问题；"
+                            "不确定就直说没查到，不要编。"
+                        ),
+                    },
+                    {"role": "user", "content": f"对方问：{query}\n\n我查到的零碎信息：\n{context[:5000]}"},
                 ],
-                temperature=0.4,
-                max_tokens=600,
+                temperature=0.6,
+                max_tokens=260,
             )
         except Exception:
-            answer = context
-        return answer.strip()[:1800]
+            answer = "\n".join(r["description"] for r in results[:2])
+        answer = re.sub(r"https?://\S+", "", answer)
+        answer = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", answer)
+        answer = re.sub(r"(来源|参考|链接)[:：].*", "", answer)
+        answer = re.sub(r"\n{2,}", "\n", answer).strip()
+        return answer[:600]
 
     async def _download(self, url: str) -> str:
         try:
