@@ -19,6 +19,7 @@ from qqbot_core.archive import Archive
 from qqbot_core.keyvault import get_key, set_key
 
 from ..widgets.common import Card, Field, small_button
+from ..widgets.loading import BusyButton, mark_refreshed
 from .base import BasePage
 
 
@@ -191,9 +192,9 @@ class CapabilitiesPage(BasePage):
         self.test_edit = QLineEdit()
         self.test_edit.setPlaceholderText("输入一句话，预览会怎么回：例如 发张猫图 / 叫妈妈")
         test_row.addWidget(self.test_edit, 1)
-        test_btn = small_button("测试判定", "secondary")
-        test_btn.clicked.connect(self._preview_modality)
-        test_row.addWidget(test_btn)
+        self.test_button = BusyButton("测试判定", "secondary")
+        self.test_button.clicked.connect(self._preview_modality)
+        test_row.addWidget(self.test_button)
         style.add_layout(test_row)
         self.test_result = QLabel("当前会：—")
         self.test_result.setObjectName("hint")
@@ -236,15 +237,20 @@ class CapabilitiesPage(BasePage):
         self.conv_label.setText("活跃会话：" + ("；".join(f"{k} {v} 条" for k, v in convs) or "暂无"))
 
     def _preview_modality(self) -> None:
+        if not self.test_edit.text().strip():
+            self.test_result.setText("先输入一句话")
+            return
+        self.test_button.start_busy("判定中…")
+        QTimer.singleShot(450, self._finish_preview)
+
+    def _finish_preview(self) -> None:
         from qqbot_core.modality import choose_modality
 
         text = self.test_edit.text().strip()
-        if not text:
-            self.test_result.setText("先输入一句话")
-            return
         mode = choose_modality(text, self.voice_thr.value(), self.image_thr.value())
         label = {"text": "文字", "image": "图片", "voice": "语音", "file": "文件"}.get(mode, mode)
-        self.test_result.setText(f"当前会：{label}")
+        self.test_button.stop_busy()
+        mark_refreshed(self.test_result, f"当前会：{label}")
 
     def _save(self) -> None:
         f = self.ctx.cfg.features
