@@ -175,6 +175,8 @@ class Config:
             f"emoji = {self.features.emoji}",
             f"catchphrase = {_q(self.features.catchphrase)}",
             f"reply_format = {_q(self.features.reply_format)}",
+            f"voice_threshold = {self.features.voice_threshold}",
+            f"image_threshold = {self.features.image_threshold}",
             "",
             "[persona]",
             f"preset = {_q(self.persona.preset)}",
@@ -292,6 +294,8 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     cfg.features.vision_model = str(_pick(feat, "vision_model", cfg.features.vision_model))
     cfg.features.voice_model = str(_pick(feat, "voice_model", cfg.features.voice_model))
     cfg.features.voice_name = str(_pick(feat, "voice_name", cfg.features.voice_name))
+    cfg.features.voice_threshold = int(_pick(feat, "voice_threshold", cfg.features.voice_threshold))
+    cfg.features.image_threshold = int(_pick(feat, "image_threshold", cfg.features.image_threshold))
 
     persona = raw.get("persona", {})
     cfg.persona.preset = _pick(persona, "preset", cfg.persona.preset)

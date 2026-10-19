@@ -486,9 +486,17 @@ class Engine:
             data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
         except Exception:
             raise ToolError("没听懂要什么图") from None
-        if not data.get("need") or not str(data.get("query") or "").strip():
-            raise ToolError("这句话不是要图")
-        url = await asyncio.to_thread(brave_image, key, str(data["query"]).strip(), )
+        query = str(data.get("query") or "").strip()
+        if not query:
+            query = re.sub(
+                r"^(能不能|可以|帮我|给我|麻烦)?\s*(发张|发个|来张|来个|整张|画一个|画个|看看|瞧瞧|找张|找张图)",
+                "",
+                user_text,
+            )
+            query = re.sub(r"(长什么样|长啥样|什么样子|啥样子|图片|照片|表情包|图)$", "", query).strip(" 的：:，,")
+        if not query:
+            raise ToolError("没提取到图片主体")
+        url = await asyncio.to_thread(brave_image, key, query)
         if not url:
             raise ToolError("没搜到合适的图")
         path = await asyncio.to_thread(download, url, self.cfg.data_dir / "downloads" / "images", 8)
@@ -621,7 +629,7 @@ class Engine:
         self.memory.add(key, "assistant", "".join(parts), self.cfg.bot_name)
         self.memory.mark_chat(key)
 
-        mode = choose_modality(text) if self.features.reply_format == "auto" else self.features.reply_format
+        mode = choose_modality(text, self.features.voice_threshold, self.features.image_threshold) if self.features.reply_format == "auto" else self.features.reply_format
         joined = "".join(parts)
         if mode in ("voice", "image", "file") and self.link is not None:
             try:

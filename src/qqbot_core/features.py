@@ -38,6 +38,8 @@ class FeatureConfig:
     emoji: int = 50  # 0=不用表情 100=很多
     catchphrase: str = ""
     reply_format: str = "auto"  # auto / text / image / voice
+    voice_threshold: int = 50  # 越高越难触发语音
+    image_threshold: int = 50  # 越高越难触发图片
 
 
 STYLE_LABELS = {
