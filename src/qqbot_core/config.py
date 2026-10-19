@@ -231,7 +231,7 @@ def load_config(path: str | Path | None = None) -> Config:
 
     for cand in candidates:
         if cand.is_file():
-            raw = tomllib.loads(cand.read_text("utf-8"))
+            raw = tomllib.loads(cand.read_text("utf-8-sig"))
             cfg.source = cand
             _apply(cfg, raw)
             break
