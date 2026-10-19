@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 import urllib.parse
@@ -67,7 +66,7 @@ def extract_frames(item: dict, cache: Path, limit: int = 3) -> tuple[list[Path],
     raw = cache / f"m-{abs(hash(item['url'])) % 10_000_000}{suffix}"
     try:
         path = _download(item["url"], raw)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return [], f"下载失败：{exc}"
     if item["kind"] in ("image", "mface"):
         try:
@@ -81,7 +80,7 @@ def extract_frames(item: dict, cache: Path, limit: int = 3) -> tuple[list[Path],
                         frames.append(frame)
                     return frames, ""
                 return [path], ""
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return [], f"图片打不开：{exc}"
     ffmpeg = ffmpeg_path()
     if ffmpeg is None:
@@ -109,7 +108,7 @@ def read_text_attachment(item: dict, cache: Path, max_kb: int = 128) -> str:
     try:
         path = _download(item["url"], raw, max_mb=2)
         data = path.read_bytes()[: max_kb * 1024]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"（文件下载失败：{exc}）"
     for encoding in ("utf-8", "gbk", "utf-16"):
         try:

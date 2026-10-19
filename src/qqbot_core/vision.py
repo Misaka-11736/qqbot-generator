@@ -144,7 +144,7 @@ def look_at_frames(frames: list[Path], key: str, model: str, question: str, extr
     for frame in frames[:3]:
         try:
             content.append({"type": "image_url", "image_url": {"url": _data_uri(frame)}})
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     if len(content) == 1:
         return "画面打不开。"

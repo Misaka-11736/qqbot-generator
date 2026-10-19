@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import re
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from .archive import Archive, classify_text
@@ -18,13 +20,13 @@ from .config import Config
 from .features import style_prompt
 from .keyvault import get_key
 from .llm import LLMError
+from .media import extract_frames, media_sources, read_text_attachment
 from .memory import Memory
 from .message import Incoming, parse_event
+from .modality import choose_modality
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
-from .media import extract_frames, media_sources, read_text_attachment
-from .modality import choose_modality
 from .vision import look_at_frames, looks_like_image_question
 from .voice import prepare as prepare_voice
 from .voice import synthesize, transcribe, voice_sources, wants_voice
@@ -133,7 +135,7 @@ class Engine:
                 log.info("语音识别：%s", text[:80])
                 if incoming.is_group:
                     incoming.at_me = True
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("语音识别失败：%s", exc)
                 await self._deliver(incoming, f"这段语音我没听清：{exc}")
                 return
@@ -156,7 +158,7 @@ class Engine:
                 try:
                     path = await synthesize(spoken, self.cfg.data_dir / "downloads" / "voice", self.features.voice_name)
                     await self._send_voice(incoming, str(path))
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     await self._deliver(incoming, f"语音合成失败：{exc}")
                 return
 
@@ -463,15 +465,39 @@ class Engine:
 
     async def _image_for(self, user_text: str, reply: str) -> Path:
         key = get_key(self.cfg.data_dir, "brave")
-        query = re.sub(r"^(看看|发张|来张|整张|画一个|画个|长什么样|图片|照片|截图)", "", user_text).strip(" 的：:，,")
-        if key and query:
-            url = await asyncio.to_thread(brave_image, key, query)
-            if url:
-                try:
-                    return await asyncio.to_thread(download, url, self.cfg.data_dir / "downloads" / "images", 8)
-                except Exception:  # noqa: BLE001
-                    pass
-        return await asyncio.to_thread(make_card, reply, self.cfg.data_dir / "downloads", self.cfg.bot_name)
+        if not key:
+            raise ToolError("没配 Brave Key，发不了图")
+        try:
+            raw = await self.llm.complete(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "判断对方是不是在明确要求你发一张图。只输出 JSON："
+                            '{"need":true,"query":"适合图片搜索的中文关键词"} 或 {"need":false}。'
+                            "没有具体对象、只是让你看文字/看聊天记录时 need=false。"
+                        ),
+                    },
+                    {"role": "user", "content": user_text},
+                ],
+                temperature=0.1,
+                max_tokens=80,
+            )
+            data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
+        except Exception:
+            raise ToolError("没听懂要什么图") from None
+        if not data.get("need") or not str(data.get("query") or "").strip():
+            raise ToolError("这句话不是要图")
+        url = await asyncio.to_thread(brave_image, key, str(data["query"]).strip(), )
+        if not url:
+            raise ToolError("没搜到合适的图")
+        path = await asyncio.to_thread(download, url, self.cfg.data_dir / "downloads" / "images", 8)
+        from PIL import Image
+
+        with Image.open(path) as img:
+            if img.width < 200 or img.height < 200:
+                raise ToolError("搜到的图太小")
+        return path
 
     async def _send_voice(self, incoming: Incoming, path: str) -> None:
         if self.link is None:
@@ -479,7 +505,7 @@ class Engine:
             return
         try:
             await self.link.send_voice("group" if incoming.is_group else "private", incoming.target_id, path)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             await self._deliver(incoming, f"语音发送失败：{exc}")
 
     async def _send_media(self, incoming: Incoming, kind: str, path: str, caption: str = "") -> None:
@@ -612,7 +638,7 @@ class Engine:
                 self.last_replies.append(joined)
                 log.info("按语义用%s回复：%s", mode, joined[:50])
                 return
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("%s 回复失败，退回文字：%s", mode, exc)
 
         for index, part in enumerate(parts):

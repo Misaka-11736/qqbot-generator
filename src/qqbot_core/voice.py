@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import subprocess
-import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
