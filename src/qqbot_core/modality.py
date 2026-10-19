@@ -35,16 +35,20 @@ def choose_modality(user_text: str, voice_threshold: int = 50, image_threshold: 
         return "text"
     if any(word in text for word in FILE_HINTS):
         return "file"
-    if voice_threshold <= 30 and any(word in text for word in ("晚安", "抱抱", "亲", "哄")):
+    image_score = 0
+    if re.search(r"(发|来|给|整|画|找).{0,6}(图|照片|图片|表情包)", text) or re.search(r"(长什么样|长啥样|什么样子|啥样子)", text):
+        image_score = 90
+    elif any(word in text for word in ("图", "照片", "图片", "表情包", "截图")):
+        image_score = 60
+    elif "看看" in text or "瞧瞧" in text:
+        image_score = 40
+    voice_score = 0
+    if re.search(r"(语音|声音|叫妈妈|叫爸爸|哄睡|念一下|读一下|说给我听|撒娇|唱)", text):
+        voice_score = 90
+    elif any(word in text for word in ("听你", "晚安", "抱抱", "亲", "哄", "叫我", "喊我")):
+        voice_score = 55
+    if voice_score >= voice_threshold and voice_score > 0:
         return "voice"
-    if voice_threshold >= 70 and not any(word in text for word in ("语音", "声音", "叫妈妈", "叫爸爸", "哄睡", "念一下", "读一下")):
-        pass
-    elif any(word in text for word in VOICE_HINTS):
-        return "voice"
-    if image_threshold <= 30 and "看看" in text:
+    if image_score >= image_threshold and image_score > 0:
         return "image"
-    if any(re.search(pattern, text) for pattern in IMAGE_PATTERNS):
-        return "image"
-    if re.search(r"(叫我|喊我).{0,4}(妈妈|爸爸|主人|哥哥|姐姐)", text):
-        return "voice"
     return "text"

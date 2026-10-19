@@ -8,6 +8,7 @@ ROOT = Path(SPECPATH)
 datas = [
     (str(ROOT / "src" / "qqbot_core" / "prompts"), "qqbot_core/prompts"),
     (str(ROOT / "assets"), "assets"),
+    (str(ROOT / "plugins"), "plugins"),
 ]
 
 a = Analysis(

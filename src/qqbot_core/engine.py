@@ -25,6 +25,7 @@ from .memory import Memory
 from .message import Incoming, parse_event
 from .modality import choose_modality
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
+from .plugins import PluginManager
 from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
 from .vision import look_at_frames, looks_like_image_question
@@ -69,6 +70,7 @@ class Engine:
         self._search_used = 0
         self.features = cfg.features
         self.archive = Archive(cfg.data_dir / "archive.db") if cfg.features.archive else None
+        self.plugins = PluginManager(self)
         if self.archive is not None:
             try:
                 self.archive.prune(cfg.features.archive_days)
@@ -88,6 +90,7 @@ class Engine:
         if self_id:
             self.self_id = self_id
         log.info("登录账号：%s（%s）", nickname or "?", self.self_id)
+        self.plugins.load()
         log.info(
             "能力：识图=%s(%s) 搜索=%s 归档=%s 自动搜索=%s",
             self.features.vision,
@@ -139,6 +142,8 @@ class Engine:
                 log.warning("语音识别失败：%s", exc)
                 await self._deliver(incoming, f"这段语音我没听清：{exc}")
                 return
+        if await self.plugins.dispatch(incoming, text):
+            return
         media = media_sources(incoming.segments)
         if media:
             if not self.features.vision:

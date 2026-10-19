@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.0 — 2026-10-19
+
+- 插件内核：plugins/<name>/plugin.json + main.py，消息钩子 handle(ctx)；
+- 插件 API：reply/image/voice/search/config，异常隔离；
+- 内置 hello 示例插件；
+- 回复载体改为连续打分，判定门槛 0 也能灵敏触发。
+
 ## 3.2.7 — 2026-10-19
 
 - 测试按钮内置转圈动画，完成后结果标记「✓ 已刷新」；
