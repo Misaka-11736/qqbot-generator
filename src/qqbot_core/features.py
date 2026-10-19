@@ -24,6 +24,10 @@ class FeatureConfig:
     download_max_mb: int = 20
     summary_max: int = 1000
     archive_days: int = 30
+    auto_search: bool = False  # 闲着自动搜索
+    auto_search_interval: int = 60  # 分钟
+    auto_search_target: str = ""  # group:123 / private:456，留空=最活跃会话
+    auto_search_topics: str = ""  # 自定义话题，逗号分隔
 
     # 表达风格
     tone: int = 50  # 0=毒舌 100=温柔

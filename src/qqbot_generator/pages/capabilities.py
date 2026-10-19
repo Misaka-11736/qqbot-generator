@@ -123,6 +123,33 @@ class CapabilitiesPage(BasePage):
         keys.add_layout(row)
         self.add(keys)
 
+        auto = Card()
+        title = QLabel("自动搜索")
+        title.setObjectName("cardTitle")
+        auto.add(title)
+        auto.add(_hint("闲着的时候自己搜点东西发到指定会话。默认关闭；目标留空就用最活跃的会话。"))
+        self.auto_check = QCheckBox("启用自动搜索")
+        self.auto_check.setChecked(bool(f.auto_search))
+        auto.add(self.auto_check)
+        auto_row = QGridLayout()
+        auto_row.setHorizontalSpacing(16)
+        auto_row.setVerticalSpacing(12)
+        self.auto_interval = QSpinBox()
+        self.auto_interval.setRange(5, 720)
+        self.auto_interval.setSuffix(" 分钟")
+        self.auto_interval.setValue(int(f.auto_search_interval))
+        auto_row.addWidget(Field("间隔", self.auto_interval), 0, 0)
+        self.auto_target = QLineEdit(f.auto_search_target)
+        self.auto_target.setPlaceholderText("group:123456 / private:654321，留空=最活跃会话")
+        auto_row.addWidget(Field("发到哪个会话", self.auto_target), 0, 1)
+        self.auto_topics = QLineEdit(f.auto_search_topics)
+        self.auto_topics.setPlaceholderText("自定义话题，逗号分隔；留空则从最近聊天里找")
+        auto_row.addWidget(Field("话题", self.auto_topics), 1, 0, 1, 2)
+        auto.add_layout(auto_row)
+        self.add(auto)
+
+        self.checks["auto_search"] = self.auto_check
+
         style = Card()
         title = QLabel("表达风格")
         title.setObjectName("cardTitle")
@@ -156,8 +183,8 @@ class CapabilitiesPage(BasePage):
         use.add(title)
         use.add(
             _hint(
-                "群里 @ 它或 /总结 1000（最多 1000 条）；/搜 关键词；/下载 链接；"
-                "/做图 文字；/做文件 文件名|内容。私聊可以直接发，不用加 /。"
+                "直接说人话就行：@它 说「搜一下 今天的新闻」「总结最近 200 条」「下载 https://…」；"
+                "私聊不用 @，也不用加 /。斜杠指令仍然保留。"
             )
         )
         self.add(use)
@@ -197,6 +224,10 @@ class CapabilitiesPage(BasePage):
         f.emoji = self.emoji_slider.value()
         f.catchphrase = self.phrase_edit.text().strip()
         f.reply_format = self.format_combo.currentData()
+        f.auto_search = self.auto_check.isChecked()
+        f.auto_search_interval = self.auto_interval.value()
+        f.auto_search_target = self.auto_target.text().strip()
+        f.auto_search_topics = self.auto_topics.text().strip()
         if self.brave_edit.text().strip():
             set_key(self.ctx.data_dir, "brave", self.brave_edit.text().strip())
             self.brave_edit.clear()

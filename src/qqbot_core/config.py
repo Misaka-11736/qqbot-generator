@@ -163,6 +163,10 @@ class Config:
             f"download_max_mb = {self.features.download_max_mb}",
             f"summary_max = {self.features.summary_max}",
             f"archive_days = {self.features.archive_days}",
+            f"auto_search = {str(self.features.auto_search).lower()}",
+            f"auto_search_interval = {self.features.auto_search_interval}",
+            f"auto_search_target = {_q(self.features.auto_search_target)}",
+            f"auto_search_topics = {_q(self.features.auto_search_topics)}",
             f"tone = {self.features.tone}",
             f"verbosity = {self.features.verbosity}",
             f"emoji = {self.features.emoji}",
@@ -274,6 +278,10 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     feat = raw.get("features", {})
     for name in ("archive", "summarize", "search", "download", "gen_image", "gen_file", "classify", "vision", "voice_in", "voice_out"):
         setattr(cfg.features, name, bool(_pick(feat, name, getattr(cfg.features, name))))
+    cfg.features.auto_search = bool(_pick(feat, "auto_search", cfg.features.auto_search))
+    cfg.features.auto_search_interval = int(_pick(feat, "auto_search_interval", cfg.features.auto_search_interval))
+    cfg.features.auto_search_target = str(_pick(feat, "auto_search_target", cfg.features.auto_search_target))
+    cfg.features.auto_search_topics = str(_pick(feat, "auto_search_topics", cfg.features.auto_search_topics))
     for name in ("search_daily_limit", "download_max_mb", "summary_max", "archive_days", "tone", "verbosity", "emoji"):
         setattr(cfg.features, name, int(_pick(feat, name, getattr(cfg.features, name))))
     cfg.features.catchphrase = str(_pick(feat, "catchphrase", cfg.features.catchphrase))

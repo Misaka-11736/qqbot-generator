@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
@@ -56,6 +57,9 @@ class Engine:
         self._last_random: dict[str, float] = {}
         self._rate = RateLimiter(cfg.chat.rate_limit_per_minute, 60.0)
         self.last_replies: list[str] = []
+        self._auto_task: asyncio.Task | None = None
+        self._search_day = ""
+        self._search_used = 0
         self.features = cfg.features
         self.archive = Archive(cfg.data_dir / "archive.db") if cfg.features.archive else None
         if self.archive is not None:
@@ -77,6 +81,8 @@ class Engine:
         if self_id:
             self.self_id = self_id
         log.info("登录账号：%s（%s）", nickname or "?", self.self_id)
+        if self.features.auto_search and (self._auto_task is None or self._auto_task.done()):
+            self._auto_task = asyncio.create_task(self._auto_search_loop())
 
     # ---------------- 事件入口 ----------------
 
@@ -107,6 +113,10 @@ class Engine:
         if not text:
             return
 
+        addressed = (not incoming.is_group) or incoming.at_me or (incoming.reply_id in self._sent_set)
+        if addressed and await self._natural_intent(text, incoming):
+            return
+
         prefix = self.cfg.chat.prefixes
         at_me_or_private = incoming.at_me or not incoming.is_group
         command = parse_command(text, prefix, allow_bare=at_me_or_private)
@@ -126,6 +136,78 @@ class Engine:
         await self._reply(incoming, text)
 
     # ---------------- 指令 ----------------
+
+    async def _natural_intent(self, text: str, incoming: Incoming) -> bool:
+        """不用 / 指令：直接说“搜一下…”也能触发。"""
+        compact = text.strip()
+        search = re.match(r"^(?:帮我|给我|替我)?\s*(?:搜索一下|搜一下|搜搜|搜索|搜|查一下|查查|查)\s*[:：,，]?\s*(.*)$", compact, re.I)
+        if search and self.features.search:
+            query = search.group(1).strip(" ：:，,")
+            if not query:
+                await self._deliver(incoming, "搜什么？给我个关键词。")
+            else:
+                await self._deliver(incoming, "我去网上看看…")
+                await self._deliver(incoming, await self._search(query))
+            return True
+        summary = re.match(r"^(?:帮我|给我)?\s*(?:总结|汇总)(?:一下|下)?(?:\s*(?:最近)?\s*(\d{1,4})\s*条)?\s*$", compact)
+        if summary and self.features.summarize:
+            count = int(summary.group(1) or self.features.summary_max)
+            count = max(10, min(count, self.features.summary_max))
+            await self._deliver(incoming, "正在翻记录，等我一下…")
+            for part in split_text(await self._summarize(incoming.conversation_key, count), limit=1600):
+                await self._deliver(incoming, part)
+            return True
+        if self.features.download and ("下载" in compact or "存一下" in compact or "保存" in compact):
+            url = re.search(r"https?://\S+", compact)
+            if url:
+                await self._deliver(incoming, await self._download(url.group(0)))
+                return True
+        return False
+
+    async def _auto_search_loop(self) -> None:
+        while True:
+            interval = max(5, int(self.features.auto_search_interval or 60))
+            await asyncio.sleep(interval * 60)
+            if not self.features.auto_search:
+                continue
+            if not get_key(self.cfg.data_dir, "brave"):
+                continue
+            conv = self.features.auto_search_target.strip()
+            if not conv and self.archive:
+                rows = self.archive.conversations()
+                conv = rows[0][0] if rows else ""
+            if not conv:
+                continue
+            topic = self._pick_topic()
+            try:
+                result = await self._search(topic)
+            except Exception as exc:
+                log.warning("自动搜索失败：%s", exc)
+                continue
+            if result.startswith(("搜索失败", "还没配置", "没搜到", "今天搜索")):
+                continue
+            await self._send_to(conv, f"闲着刷到点东西：{result[:600]}")
+
+    def _pick_topic(self) -> str:
+        custom = [x.strip() for x in re.split(r"[,，;；\n]", self.features.auto_search_topics) if x.strip()]
+        if custom:
+            return random.choice(custom)
+        if self.archive:
+            rows = self.archive.recent(self.features.auto_search_target or (self.archive.conversations()[0][0] if self.archive.conversations() else ""), 30)
+            words = [w for row in rows for w in re.findall(r"[\u4e00-\u9fff]{2,6}", row["text"])]
+            if words:
+                return random.choice(words) + " 最近有什么新消息"
+        return random.choice(["今天有什么科技新闻", "最近有什么有趣的冷知识", "这周有什么值得看的新电影"])
+
+    async def _send_to(self, conversation: str, text: str) -> None:
+        if self.link is None or ":" not in conversation:
+            return
+        kind, _, raw = conversation.partition(":")
+        try:
+            target = int(raw)
+        except ValueError:
+            return
+        await self.link.send_text("group" if kind == "group" else "private", target, text)
 
     async def _run_capability(self, name: str, arg: str, incoming: Incoming) -> bool:
         key = name.lower().strip()
@@ -196,6 +278,12 @@ class Engine:
         return f"最近 {len(rows)} 条总结：\n{final.strip()}"
 
     async def _search(self, query: str) -> str:
+        today = time.strftime("%Y-%m-%d")
+        if today != self._search_day:
+            self._search_day = today
+            self._search_used = 0
+        if self._search_used >= self.features.search_daily_limit:
+            return "今天搜索次数用完了，明天再来。"
         key = get_key(self.cfg.data_dir, "brave")
         if not key:
             return "还没配置 Brave Key，去「能力」页填一下。"
@@ -203,6 +291,7 @@ class Engine:
             results = await asyncio.to_thread(brave_search, key, query, 5)
         except ToolError as exc:
             return f"搜索失败：{exc}"
+        self._search_used += 1
         if not results:
             return "没搜到结果。"
         context = "\n".join(f"{i + 1}. {r['title']} {r['url']}\n{r['description']}" for i, r in enumerate(results))
