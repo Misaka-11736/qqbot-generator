@@ -15,11 +15,11 @@ a = Analysis(
     pathex=[str(ROOT / "src")],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=["PIL", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "numpy", "PIL", "pytest", "setuptools", "pip"],
+    excludes=["tkinter", "numpy", "pytest", "setuptools", "pip"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .features import FeatureConfig
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -84,6 +86,7 @@ class Config:
     chat: ChatConfig = field(default_factory=ChatConfig)
     persona: PersonaConfig = field(default_factory=PersonaConfig)
     log: LogConfig = field(default_factory=LogConfig)
+    features: FeatureConfig = field(default_factory=FeatureConfig)
     data_dir: Path = PROJECT_ROOT / "data"
     source: Path | None = None
 
@@ -144,6 +147,27 @@ class Config:
             f"enable_group = {str(self.chat.enable_group).lower()}",
             f"group_scope = {_q(self.chat.group_scope)}",
             f"group_list = [{', '.join(str(q) for q in self.chat.group_list)}]",
+            "",
+            "[features]",
+            f"archive = {str(self.features.archive).lower()}",
+            f"summarize = {str(self.features.summarize).lower()}",
+            f"search = {str(self.features.search).lower()}",
+            f"download = {str(self.features.download).lower()}",
+            f"gen_image = {str(self.features.gen_image).lower()}",
+            f"gen_file = {str(self.features.gen_file).lower()}",
+            f"classify = {str(self.features.classify).lower()}",
+            f"vision = {str(self.features.vision).lower()}",
+            f"voice_in = {str(self.features.voice_in).lower()}",
+            f"voice_out = {str(self.features.voice_out).lower()}",
+            f"search_daily_limit = {self.features.search_daily_limit}",
+            f"download_max_mb = {self.features.download_max_mb}",
+            f"summary_max = {self.features.summary_max}",
+            f"archive_days = {self.features.archive_days}",
+            f"tone = {self.features.tone}",
+            f"verbosity = {self.features.verbosity}",
+            f"emoji = {self.features.emoji}",
+            f"catchphrase = {_q(self.features.catchphrase)}",
+            f"reply_format = {_q(self.features.reply_format)}",
             "",
             "[persona]",
             f"preset = {_q(self.persona.preset)}",
@@ -246,6 +270,14 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     cfg.chat.enable_group = _pick(chat, "enable_group", cfg.chat.enable_group)
     cfg.chat.group_scope = _pick(chat, "group_scope", cfg.chat.group_scope)
     cfg.chat.group_list = [int(x) for x in _pick(chat, "group_list", cfg.chat.group_list)]
+
+    feat = raw.get("features", {})
+    for name in ("archive", "summarize", "search", "download", "gen_image", "gen_file", "classify", "vision", "voice_in", "voice_out"):
+        setattr(cfg.features, name, bool(_pick(feat, name, getattr(cfg.features, name))))
+    for name in ("search_daily_limit", "download_max_mb", "summary_max", "archive_days", "tone", "verbosity", "emoji"):
+        setattr(cfg.features, name, int(_pick(feat, name, getattr(cfg.features, name))))
+    cfg.features.catchphrase = str(_pick(feat, "catchphrase", cfg.features.catchphrase))
+    cfg.features.reply_format = str(_pick(feat, "reply_format", cfg.features.reply_format))
 
     persona = raw.get("persona", {})
     cfg.persona.preset = _pick(persona, "preset", cfg.persona.preset)

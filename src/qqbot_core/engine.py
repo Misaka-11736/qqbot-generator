@@ -10,13 +10,17 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from .archive import Archive, classify_text
 from .commands import CommandContext, parse_command
 from .commands import handle as handle_command
 from .config import Config
+from .features import style_prompt
+from .keyvault import get_key
 from .llm import LLMError
 from .memory import Memory
 from .message import Incoming, parse_event
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
+from .tools import ToolError, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
 
 log = logging.getLogger("qqbot")
@@ -52,6 +56,13 @@ class Engine:
         self._last_random: dict[str, float] = {}
         self._rate = RateLimiter(cfg.chat.rate_limit_per_minute, 60.0)
         self.last_replies: list[str] = []
+        self.features = cfg.features
+        self.archive = Archive(cfg.data_dir / "archive.db") if cfg.features.archive else None
+        if self.archive is not None:
+            try:
+                self.archive.prune(cfg.features.archive_days)
+            except Exception:
+                pass
 
     # ---------------- 连接就绪 ----------------
 
@@ -85,6 +96,13 @@ class Engine:
         self._remember_seen(incoming.message_id)
         self.memory.remember_user(incoming.user_id, incoming.sender_name)
 
+        tags = classify_text(incoming.text) if (self.features.classify and incoming.text) else []
+        if self.archive is not None:
+            try:
+                self.archive.add(incoming, tags)
+            except Exception as exc:
+                log.warning("归档失败：%s", exc)
+
         text = incoming.text.strip()
         if not text:
             return
@@ -93,6 +111,8 @@ class Engine:
         at_me_or_private = incoming.at_me or not incoming.is_group
         command = parse_command(text, prefix, allow_bare=at_me_or_private)
         if command is not None:
+            if await self._run_capability(command[0], command[1], incoming):
+                return
             await self._run_command(command[0], command[1], incoming)
             return
 
@@ -106,6 +126,146 @@ class Engine:
         await self._reply(incoming, text)
 
     # ---------------- 指令 ----------------
+
+    async def _run_capability(self, name: str, arg: str, incoming: Incoming) -> bool:
+        key = name.lower().strip()
+        if key in ("总结", "摘要", "summary") and self.features.summarize and self.archive:
+            limit = self.features.summary_max
+            try:
+                limit = max(10, min(int(arg.strip() or limit), limit))
+            except ValueError:
+                limit = self.features.summary_max
+            await self._deliver(incoming, "正在翻记录，等我一下…")
+            text = await self._summarize(incoming.conversation_key, limit)
+            for part in split_text(text, limit=1600):
+                await self._deliver(incoming, part)
+            return True
+        if key in ("搜", "搜索", "search") and self.features.search:
+            if not arg.strip():
+                await self._deliver(incoming, "用法：/搜 关键词")
+                return True
+            await self._deliver(incoming, "我去网上看看…")
+            await self._deliver(incoming, await self._search(arg.strip()))
+            return True
+        if key in ("下载", "download") and self.features.download:
+            if not arg.strip():
+                await self._deliver(incoming, "用法：/下载 https://…")
+                return True
+            await self._deliver(incoming, await self._download(arg.strip()))
+            return True
+        if key in ("做图", "画图", "卡片", "card") and self.features.gen_image:
+            await self._make_image(incoming, arg.strip())
+            return True
+        if key in ("做文件", "文件", "file") and self.features.gen_file:
+            await self._make_file(incoming, arg.strip())
+            return True
+        return False
+
+    async def _summarize(self, conversation: str, limit: int) -> str:
+        rows = self.archive.recent(conversation, limit) if self.archive else []
+        if len(rows) < 3:
+            return f"这个会话只归档到 {len(rows)} 条，至少 3 条才能总结。"
+        lines = []
+        for row in rows:
+            stamp = time.strftime("%m-%d %H:%M", time.localtime(row["ts"] or 0))
+            lines.append(f"[{stamp}] {row['name']}：{row['text']}")
+        partials: list[str] = []
+        for start in range(0, len(lines), 200):
+            chunk = "\n".join(lines[start:start + 200])
+            partials.append(
+                await self.llm.complete(
+                    [
+                        {"role": "system", "content": "你是群聊记录总结器。提取这段聊天的主要话题、结论、分歧和待办，中文，200 字以内。"},
+                        {"role": "user", "content": chunk[:12000]},
+                    ],
+                    temperature=0.3,
+                    max_tokens=500,
+                )
+            )
+        merged = "\n".join(partials)
+        final = await self.llm.complete(
+            [
+                {"role": "system", "content": "把多段摘要合并成一份群聊总结：3~6 条要点，最后一行写“整体氛围”。中文，不要 Markdown。"},
+                {"role": "user", "content": merged[:12000]},
+            ],
+            temperature=0.4,
+            max_tokens=700,
+        )
+        if self.archive:
+            self.archive.save_summary(conversation, len(rows), final)
+        return f"最近 {len(rows)} 条总结：\n{final.strip()}"
+
+    async def _search(self, query: str) -> str:
+        key = get_key(self.cfg.data_dir, "brave")
+        if not key:
+            return "还没配置 Brave Key，去「能力」页填一下。"
+        try:
+            results = await asyncio.to_thread(brave_search, key, query, 5)
+        except ToolError as exc:
+            return f"搜索失败：{exc}"
+        if not results:
+            return "没搜到结果。"
+        context = "\n".join(f"{i + 1}. {r['title']} {r['url']}\n{r['description']}" for i, r in enumerate(results))
+        try:
+            answer = await self.llm.complete(
+                [
+                    {"role": "system", "content": "根据搜索结果回答问题，中文，简洁；不要编造，最后列出用到的链接。"},
+                    {"role": "user", "content": f"问题：{query}\n\n搜索结果：\n{context[:8000]}"},
+                ],
+                temperature=0.4,
+                max_tokens=600,
+            )
+        except Exception:
+            answer = context
+        return answer.strip()[:1800]
+
+    async def _download(self, url: str) -> str:
+        try:
+            path = await asyncio.to_thread(download, url, self.cfg.data_dir / "downloads", self.features.download_max_mb)
+        except (ToolError, OSError) as exc:
+            return f"下载失败：{exc}"
+        return f"已下载：{path.name}（{path.stat().st_size // 1024} KB）\n{path}"
+
+    async def _make_image(self, incoming: Incoming, text: str) -> None:
+        if not text:
+            await self._deliver(incoming, "用法：/做图 想写在卡片上的字")
+            return
+        try:
+            path = await asyncio.to_thread(make_card, text, self.cfg.data_dir / "downloads", self.cfg.bot_name)
+        except Exception as exc:
+            await self._deliver(incoming, f"做图失败：{exc}")
+            return
+        await self._send_media(incoming, "image", str(path), caption="给你做了一张")
+
+    async def _make_file(self, incoming: Incoming, arg: str) -> None:
+        if "|" in arg:
+            name, content = arg.split("|", 1)
+        else:
+            name, content = "note.txt", arg
+        if not content.strip():
+            await self._deliver(incoming, "用法：/做文件 文件名|内容")
+            return
+        try:
+            path = await asyncio.to_thread(make_file, name.strip(), content, self.cfg.data_dir / "downloads")
+        except Exception as exc:
+            await self._deliver(incoming, f"做文件失败：{exc}")
+            return
+        await self._send_media(incoming, "file", str(path), caption="")
+
+    async def _send_media(self, incoming: Incoming, kind: str, path: str, caption: str = "") -> None:
+        target_type = "group" if incoming.is_group else "private"
+        if self.link is None:
+            await self._deliver(incoming, f"[{kind}] {path}")
+            return
+        try:
+            if kind == "image":
+                await self.link.send_image(target_type, incoming.target_id, path, caption)
+            else:
+                await self.link.send_file(target_type, incoming.target_id, path)
+        except Exception as exc:
+            self.stats["errors"] += 1
+            log.error("发送媒体失败：%s", exc)
+            await self._deliver(incoming, f"发送失败：{exc}")
 
     async def _run_command(self, name: str, arg: str, incoming: Incoming) -> None:
         ctx = CommandContext(
@@ -233,7 +393,7 @@ class Engine:
             iq=iq,
             user_name=incoming.sender_name,
             is_group=incoming.is_group,
-            extra=f"现在是 {clock}。",
+            extra=f"现在是 {clock}。" + ((" 表达风格：" + style_prompt(self.features)) if style_prompt(self.features) else ""),
         )
         messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         history = self.memory.history(incoming.conversation_key)

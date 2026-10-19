@@ -14,6 +14,7 @@ import json
 import logging
 import urllib.parse
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketException
@@ -248,3 +249,31 @@ class OneBotLink:
         action = "send_group_msg" if target_type == "group" else "send_private_msg"
         key = "group_id" if target_type == "group" else "user_id"
         return await self.call(action, {key: target_id, "message": message})
+
+
+    async def send_segments(
+        self,
+        target_type: str,
+        target_id: int,
+        segments: list[dict[str, Any]],
+        reply_to: int | None = None,
+    ) -> Any:
+        message: list[dict[str, Any]] = []
+        if reply_to:
+            message.append({"type": "reply", "data": {"id": str(reply_to)}})
+        message += segments
+        action = "send_group_msg" if target_type == "group" else "send_private_msg"
+        key = "group_id" if target_type == "group" else "user_id"
+        return await self.call(action, {key: target_id, "message": message})
+
+    async def send_image(self, target_type: str, target_id: int, path: str, caption: str = "") -> Any:
+        uri = "file:///" + str(path).replace("\\", "/").lstrip("/")
+        segments: list[dict[str, Any]] = [{"type": "image", "data": {"file": uri}}]
+        if caption:
+            segments.append({"type": "text", "data": {"text": caption}})
+        return await self.send_segments(target_type, target_id, segments)
+
+    async def send_file(self, target_type: str, target_id: int, path: str, name: str = "") -> Any:
+        action = "upload_group_file" if target_type == "group" else "upload_private_file"
+        key = "group_id" if target_type == "group" else "user_id"
+        return await self.call(action, {key: target_id, "file": str(path), "name": name or Path(path).name})
