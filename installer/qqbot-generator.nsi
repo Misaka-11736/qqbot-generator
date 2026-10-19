@@ -7,7 +7,7 @@ Unicode true
 !include "FileFunc.nsh"
 
 !define APP_NAME "QQ Bot生成器"
-!define APP_VERSION "3.2.1"
+!define APP_VERSION "3.2.2"
 !define APP_EXE "QQ Bot生成器.exe"
 !define APP_PUBLISHER "QQ Bot Generator"
 !define APP_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\QQBotGenerator"
@@ -21,7 +21,7 @@ SetCompressor /SOLID lzma
 SetCompressorDictSize 32
 BrandingText "${APP_NAME} v${APP_VERSION}"
 
-VIProductVersion "3.2.1.0"
+VIProductVersion "3.2.2.0"
 VIAddVersionKey "ProductName" "${APP_NAME}"
 VIAddVersionKey "FileDescription" "${APP_NAME} 安装程序"
 VIAddVersionKey "FileVersion" "${APP_VERSION}"

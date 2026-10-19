@@ -37,7 +37,7 @@ class FeatureConfig:
     verbosity: int = 40  # 0=很短 100=很详细
     emoji: int = 50  # 0=不用表情 100=很多
     catchphrase: str = ""
-    reply_format: str = "text"  # text / image / voice（image/voice 后续版本）
+    reply_format: str = "auto"  # auto / text / image / voice
 
 
 STYLE_LABELS = {

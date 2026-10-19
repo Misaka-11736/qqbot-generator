@@ -21,9 +21,10 @@ from .llm import LLMError
 from .memory import Memory
 from .message import Incoming, parse_event
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
-from .tools import ToolError, brave_search, download, make_card, make_file
+from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
 from .media import extract_frames, media_sources, read_text_attachment
+from .modality import choose_modality
 from .vision import look_at_frames, looks_like_image_question
 from .voice import prepare as prepare_voice
 from .voice import synthesize, transcribe, voice_sources, wants_voice
@@ -460,6 +461,18 @@ class Engine:
             return
         await self._send_media(incoming, "file", str(path), caption="")
 
+    async def _image_for(self, user_text: str, reply: str) -> Path:
+        key = get_key(self.cfg.data_dir, "brave")
+        query = re.sub(r"^(看看|发张|来张|整张|画一个|画个|长什么样|图片|照片|截图)", "", user_text).strip(" 的：:，,")
+        if key and query:
+            url = await asyncio.to_thread(brave_image, key, query)
+            if url:
+                try:
+                    return await asyncio.to_thread(download, url, self.cfg.data_dir / "downloads" / "images", 8)
+                except Exception:  # noqa: BLE001
+                    pass
+        return await asyncio.to_thread(make_card, reply, self.cfg.data_dir / "downloads", self.cfg.bot_name)
+
     async def _send_voice(self, incoming: Incoming, path: str) -> None:
         if self.link is None:
             await self._deliver(incoming, f"[语音] {path}")
@@ -581,6 +594,26 @@ class Engine:
         self.memory.add(key, "user", text, incoming.sender_name)
         self.memory.add(key, "assistant", "".join(parts), self.cfg.bot_name)
         self.memory.mark_chat(key)
+
+        mode = choose_modality(text) if self.features.reply_format == "auto" else self.features.reply_format
+        joined = "".join(parts)
+        if mode in ("voice", "image", "file") and self.link is not None:
+            try:
+                if mode == "voice":
+                    path = await synthesize(joined, self.cfg.data_dir / "downloads" / "voice", self.features.voice_name)
+                    await self._send_voice(incoming, str(path))
+                elif mode == "image":
+                    path = await self._image_for(text, joined)
+                    await self._send_media(incoming, "image", str(path), caption=joined[:80])
+                else:
+                    path = make_file("回复.txt", joined, self.cfg.data_dir / "downloads")
+                    await self._send_media(incoming, "file", str(path))
+                self.stats["replied"] += 1
+                self.last_replies.append(joined)
+                log.info("按语义用%s回复：%s", mode, joined[:50])
+                return
+            except Exception as exc:  # noqa: BLE001
+                log.warning("%s 回复失败，退回文字：%s", mode, exc)
 
         for index, part in enumerate(parts):
             if self.cfg.chat.reply_delay:

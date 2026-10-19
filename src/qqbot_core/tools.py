@@ -187,3 +187,22 @@ def make_file(name: str, content: str, out_dir: Path) -> Path:
     path = out_dir / safe
     path.write_text(content[:20000], "utf-8")
     return path
+
+
+def brave_image(key: str, query: str) -> str:
+    if not key:
+        return ""
+    url = "https://api.search.brave.com/res/v1/images/search?" + urllib.parse.urlencode({"q": query, "count": 3})
+    req = urllib.request.Request(
+        url, headers={"Accept": "application/json", "X-Subscription-Token": key, "User-Agent": UA}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    for item in (data.get("results") or []):
+        candidate = (item.get("thumbnail") or {}).get("src") or (item.get("properties") or {}).get("url") or item.get("url")
+        if candidate:
+            return str(candidate)
+    return ""
