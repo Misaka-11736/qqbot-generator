@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.build/
+
+# 打包产物
+build/
+dist/
+*.spec.bak
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 本地数据
+*.log
+data/
+
+# 工具缓存
+.ruff_cache/

@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Unit tests
+        run: python tests/test_core.py
+
+      - name: End-to-end tests
+        run: python tests/e2e_test.py
+
+      - name: Chat smoke test
+        run: python tests/test_chat.py
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build exe and installer
+        run: powershell -ExecutionPolicy Bypass -File installer/build_installer.ps1 -Nsis "C:\Program Files (x86)\NSIS"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/QQ Bot生成器.exe
+            dist/QQ Bot生成器-安装包.exe
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/QQ Bot生成器-安装包.exe
+            dist/QQ Bot生成器.exe
+          generate_release_notes: true

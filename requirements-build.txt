@@ -1,0 +1,3 @@
+# 打包与资源生成
+pyinstaller>=6.6
+pillow>=10.0

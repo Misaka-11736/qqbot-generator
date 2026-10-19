@@ -1,0 +1,29 @@
+[project]
+name = "qqbot-generator"
+version = "2.1.0"
+description = "QQ Bot生成器：NapCat + OneBot + LLM 的 Windows 桌面客户端"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "PySide6>=6.6",
+    "websockets>=14.0",
+]
+
+[tool.ruff]
+line-length = 128
+target-version = "py311"
+exclude = ["build", "dist", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",   # 中文注释不强制折行
+    "RUF012", # Qt 里类属性可变很常见
+    "SIM102", # 嵌套 if 有时更好读
+    "RUF001", "RUF002", "RUF003", # 中文标点不当作歧义字符
+    "SIM105", # try/except/pass 读起来更直观
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["SIM115", "ASYNC230", "ASYNC220", "RUF012", "E402"]
