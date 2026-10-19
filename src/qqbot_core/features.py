@@ -16,7 +16,8 @@ class FeatureConfig:
     gen_image: bool = True  # 允许 /做图
     gen_file: bool = True  # 允许 /做文件
     classify: bool = True  # 群聊内容分类
-    vision: bool = False  # v3.1
+    vision: bool = True  # 识图
+    vision_model: str = "qwen3-vl-plus"
     voice_in: bool = False  # v3.2
     voice_out: bool = False  # v3.2
 

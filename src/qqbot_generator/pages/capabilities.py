@@ -68,6 +68,7 @@ class CapabilitiesPage(BasePage):
             ("gen_image", "生成图片"),
             ("gen_file", "生成文件"),
             ("classify", "内容分类"),
+            ("vision", "图片理解"),
         ]
         for index, (name, label) in enumerate(items):
             box = QCheckBox(label)
@@ -75,7 +76,7 @@ class CapabilitiesPage(BasePage):
             self.checks[name] = box
             grid.addWidget(box, index // 4, index % 4)
         for index, (name, label) in enumerate(
-            [("vision", "图片理解（v3.1）"), ("voice_in", "语音识别（v3.2）"), ("voice_out", "语音合成（v3.2）")]
+            [("voice_in", "语音识别（v3.2）"), ("voice_out", "语音合成（v3.2）")]
         ):
             box = QCheckBox(label)
             box.setEnabled(False)
@@ -104,7 +105,10 @@ class CapabilitiesPage(BasePage):
         self.qwen_edit.setPlaceholderText("已保存，留空则不修改" if qwen_saved else "粘贴百炼 API Key（v3.1 用）")
         row.addWidget(Field("百炼 Qwen Key", self.qwen_edit), 0, 1)
         self.model_combo = QComboBox()
-        self.model_combo.addItems(["qwen-vl-max", "qwen-vl-plus"])
+        self.model_combo.addItems(["qwen3-vl-plus", "qwen3-vl-max", "qwen-vl-max", "qwen-vl-plus"])
+        idx_model = self.model_combo.findText(f.vision_model)
+        if idx_model >= 0:
+            self.model_combo.setCurrentIndex(idx_model)
         row.addWidget(Field("视觉模型", self.model_combo), 1, 0)
         self.search_limit = QSpinBox()
         self.search_limit.setRange(1, 500)
@@ -224,6 +228,7 @@ class CapabilitiesPage(BasePage):
         f.emoji = self.emoji_slider.value()
         f.catchphrase = self.phrase_edit.text().strip()
         f.reply_format = self.format_combo.currentData()
+        f.vision_model = self.model_combo.currentText()
         f.auto_search = self.auto_check.isChecked()
         f.auto_search_interval = self.auto_interval.value()
         f.auto_search_target = self.auto_target.text().strip()

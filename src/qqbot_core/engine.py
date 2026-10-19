@@ -23,6 +23,7 @@ from .message import Incoming, parse_event
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .tools import ToolError, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
+from .vision import image_sources, look_at_image, looks_like_image_question
 
 log = logging.getLogger("qqbot")
 
@@ -110,6 +111,10 @@ class Engine:
                 log.warning("归档失败：%s", exc)
 
         text = incoming.text.strip()
+        images = image_sources(incoming.segments)
+        if self.features.vision and images and self._want_vision(incoming, text):
+            await self._vision_reply(incoming, text, images[0])
+            return
         if not text:
             return
 
@@ -135,6 +140,31 @@ class Engine:
         await self._reply(incoming, text)
 
     # ---------------- 指令 ----------------
+
+    def _want_vision(self, incoming: Incoming, text: str) -> bool:
+        if not incoming.is_group:
+            return True
+        if incoming.at_me or (incoming.reply_id in self._sent_set):
+            return True
+        return looks_like_image_question(text)
+
+    async def _vision_reply(self, incoming: Incoming, text: str, url: str) -> None:
+        key = get_key(self.cfg.data_dir, "qwen")
+        if not key:
+            await self._deliver(incoming, "识图还没配 Key，去「能力」页填百炼的 Key。")
+            return
+        log.info("识图：%s", (text or "无文字")[:60])
+        await self._deliver(incoming, "我看看…")
+        answer = await asyncio.to_thread(
+            look_at_image,
+            url,
+            key,
+            self.features.vision_model,
+            text,
+            self.cfg.data_dir / "downloads" / "vision",
+        )
+        for part in split_text(answer, limit=600):
+            await self._deliver(incoming, part)
 
     async def _natural_intent(self, text: str, incoming: Incoming) -> bool:
         """不用 / 指令：直接说“搜一下…”也能触发。"""

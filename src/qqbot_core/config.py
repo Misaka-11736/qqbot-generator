@@ -157,6 +157,7 @@ class Config:
             f"gen_file = {str(self.features.gen_file).lower()}",
             f"classify = {str(self.features.classify).lower()}",
             f"vision = {str(self.features.vision).lower()}",
+            f"vision_model = {_q(self.features.vision_model)}",
             f"voice_in = {str(self.features.voice_in).lower()}",
             f"voice_out = {str(self.features.voice_out).lower()}",
             f"search_daily_limit = {self.features.search_daily_limit}",
@@ -286,6 +287,7 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
         setattr(cfg.features, name, int(_pick(feat, name, getattr(cfg.features, name))))
     cfg.features.catchphrase = str(_pick(feat, "catchphrase", cfg.features.catchphrase))
     cfg.features.reply_format = str(_pick(feat, "reply_format", cfg.features.reply_format))
+    cfg.features.vision_model = str(_pick(feat, "vision_model", cfg.features.vision_model))
 
     persona = raw.get("persona", {})
     cfg.persona.preset = _pick(persona, "preset", cfg.persona.preset)
