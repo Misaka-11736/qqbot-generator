@@ -385,7 +385,7 @@ class Engine:
                 await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
             except ToolError as exc:
                 log.info("[task] 图片失败：%s", exc)
-                await self._deliver(incoming, f"没找到合适的图：{exc}")
+                await self._deliver(incoming, str(exc))
             return True
         if self.features.search and plan.action == "search":
             log.info("[task] 网页搜索：%s", query)
@@ -555,7 +555,8 @@ class Engine:
         try:
             results = await asyncio.to_thread(brave_search, key, query, 5)
         except ToolError as exc:
-            return f"搜索失败：{exc}"
+            log.warning("[search] 失败：%s", exc)
+            return str(exc)
         self._search_used += 1
         if not results:
             return "没搜到结果。"
@@ -691,22 +692,19 @@ class Engine:
     async def _semantic_connected(self, incoming: Incoming, text: str) -> bool:
         """用模型判断新消息和机器人上一句是否语义相接；接不上就不插话。"""
         if incoming.at_me:
+            log.info("[dialog] 硬回复：被 @")
             return True
         history = self.memory.history(incoming.conversation_key)[-8:]
         last_assistant = next((h for h in reversed(history) if h.get("role") == "assistant"), None)
         if last_assistant is None:
+            log.info("[dialog] 不接：没有可接的上一句")
             return False
         lines = []
         for item in history[-6:]:
             who = self.cfg.bot_name if item.get("role") == "assistant" else (item.get("name") or "群友")
             lines.append(f"{who}：{item.get('text') or ''}")
         context = "\n".join(lines)
-        query = ""
-        if direct:
-            query = user_text.strip()
         try:
-            if query:
-                raise LookupError
             raw = await self.llm.complete(
                 [
                     {
@@ -727,9 +725,10 @@ class Engine:
         except Exception:
             score = self._addressing_score(incoming, text)
         if score >= self.cfg.chat.address_threshold:
-            log.info("语义连接（%s 分）：%s", score, text[:40])
+            log.info("[dialog] 接话：语义分 %s ≥ 门槛 %s", score, self.cfg.chat.address_threshold)
             incoming.at_me = True  # 语义相接也按硬回复处理
             return True
+        log.info("[dialog] 不接：语义分 %s < 门槛 %s", score, self.cfg.chat.address_threshold)
         return False
 
     def _addressing_score(self, incoming: Incoming, text: str) -> int:
@@ -781,9 +780,11 @@ class Engine:
     def _should_reply(self, incoming: Incoming, text: str) -> bool:
         key = incoming.conversation_key
         if self.memory.muted(key):
+            log.info("[dialog] 不回复：当前会话已静音")
             return False
         if incoming.is_group:
             if not self.cfg.chat.enable_group:
+                log.info("[dialog] 不回复：群聊能力已关闭")
                 return False
             scope = self.cfg.chat.group_scope
             if scope == "whitelist" and incoming.group_id not in self.cfg.chat.group_list:
@@ -793,10 +794,13 @@ class Engine:
         elif not self.cfg.chat.enable_private:
             return False
         if incoming.at_me:
+            log.info("[dialog] 硬回复：被 @")
             return True
         if incoming.reply_id and incoming.reply_id in self._sent_set:
+            log.info("[dialog] 硬回复：回复了它的消息")
             return True
         if not incoming.is_group:
+            log.info("[dialog] 回复：私聊")
             return True
         if self.cfg.chat.address_awareness:
             score = self._addressing_score(incoming, text)
@@ -807,11 +811,14 @@ class Engine:
 
         # 群聊：按概率搭话，且受冷却和最短长度限制
         if len(text) < 2 or text.startswith("["):
+            log.info("[dialog] 不插话：消息太短")
             return False
         now = time.monotonic()
         if now - self._last_random.get(key, 0.0) < self.cfg.chat.group_cooldown:
+            log.info("[dialog] 不插话：冷却中")
             return False
         if random.random() >= self.cfg.chat.group_chat_probability:
+            log.info("[dialog] 不插话：概率未命中")
             return False
         self._last_random[key] = now
         return True

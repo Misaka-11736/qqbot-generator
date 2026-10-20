@@ -8,6 +8,7 @@ import re
 import socket
 import urllib.parse
 import urllib.request
+import time
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -68,23 +69,37 @@ def _get(url: str, timeout: float = 15.0, limit: int = MAX_PAGE) -> tuple[bytes,
     return data, ctype
 
 
+def _brave_get(url: str, key: str, attempts: int = 3) -> dict:
+    last: Exception | None = None
+    for attempt in range(attempts):
+        req = urllib.request.Request(
+            url,
+            headers={"Accept": "application/json", "X-Subscription-Token": key, "User-Agent": UA},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return json.loads(resp.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 500, 502, 503, 504) and attempt + 1 < attempts:
+                time.sleep(1.0 * (attempt + 1))
+                last = exc
+                continue
+            raise ToolError(f"Brave HTTP {exc.code}") from exc
+        except OSError as exc:
+            last = exc
+            if attempt + 1 < attempts:
+                time.sleep(1.2 * (attempt + 1))
+                continue
+    raise ToolError("搜索服务暂时连不上，请稍后再试") from last
+
+
 def brave_search(key: str, query: str, count: int = 5) -> list[dict]:
     if not key:
         raise ToolError("还没填 Brave API Key")
     url = "https://api.search.brave.com/res/v1/web/search?" + urllib.parse.urlencode(
         {"q": query, "count": max(1, min(count, 8)), "text_decorations": "false"}
     )
-    req = urllib.request.Request(
-        url,
-        headers={"Accept": "application/json", "X-Subscription-Token": key, "User-Agent": UA},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="replace"))
-    except urllib.error.HTTPError as exc:
-        raise ToolError(f"Brave 返回 HTTP {exc.code}") from exc
-    except OSError as exc:
-        raise ToolError(f"搜索失败：{exc}") from exc
+    data = _brave_get(url, key)
     results = []
     for item in (data.get("web") or {}).get("results") or []:
         results.append(
@@ -195,13 +210,9 @@ def brave_image(key: str, query: str) -> str:
     if not key:
         return ""
     url = "https://api.search.brave.com/res/v1/images/search?" + urllib.parse.urlencode({"q": query, "count": 3})
-    req = urllib.request.Request(
-        url, headers={"Accept": "application/json", "X-Subscription-Token": key, "User-Agent": UA}
-    )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="replace"))
-    except (OSError, json.JSONDecodeError):
+        data = _brave_get(url, key)
+    except (ToolError, json.JSONDecodeError):
         return ""
     for item in (data.get("results") or []):
         candidate = (item.get("thumbnail") or {}).get("src") or (item.get("properties") or {}).get("url") or item.get("url")
