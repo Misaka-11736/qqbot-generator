@@ -27,6 +27,8 @@ class FeatureConfig:
     download_max_mb: int = 20
     summary_max: int = 1000
     archive_days: int = 30
+    cache_keep_days: int = 7
+    cache_max_mb: int = 500
     auto_search: bool = False  # 闲着自动搜索
     auto_search_interval: int = 60  # 分钟
     auto_search_target: str = ""  # group:123 / private:456，留空=最活跃会话

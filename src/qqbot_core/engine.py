@@ -16,6 +16,7 @@ from typing import Any
 from .archive import Archive, classify_text
 from .commands import CommandContext, parse_command
 from .commands import handle as handle_command
+from . import cache as cache_store
 from .config import Config, load_config
 from .features import style_prompt
 from .keyvault import get_key
@@ -26,6 +27,8 @@ from .message import Incoming, parse_event
 from .modality import choose_modality, search_query
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .plugins import PluginManager
+from .semantic import describe as describe_plan
+from .semantic import parse as parse_semantic
 from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
 from .vision import look_at_frames, looks_like_image_question
@@ -66,6 +69,7 @@ class Engine:
         self._rate = RateLimiter(cfg.chat.rate_limit_per_minute, 60.0)
         self.last_replies: list[str] = []
         self._auto_task: asyncio.Task | None = None
+        self._cache_task: asyncio.Task | None = None
         self._search_day = ""
         self._search_used = 0
         self.features = cfg.features
@@ -105,6 +109,8 @@ class Engine:
         )
         if self.features.auto_search and (self._auto_task is None or self._auto_task.done()):
             self._auto_task = asyncio.create_task(self._auto_search_loop())
+        if self._cache_task is None or self._cache_task.done():
+            self._cache_task = asyncio.create_task(self._cache_cleanup_loop())
 
     # ---------------- 事件入口 ----------------
 
@@ -274,6 +280,21 @@ class Engine:
     async def _natural_intent(self, text: str, incoming: Incoming) -> bool:
         """不用 / 指令：直接说“搜一下…”也能触发。"""
         compact = text.strip()
+        plan = parse_semantic(compact)
+        if plan.query and (plan.modality == "image" or (plan.action == "search" and plan.measure)):
+            log.info("语义分割：%s", describe_plan(plan))
+            try:
+                path = await self._image_for(plan.query, "给你找的", direct=True)
+                await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{plan.query}")
+            except ToolError as exc:
+                log.info("图片任务失败：%s", exc)
+                await self._deliver(incoming, f"没找到合适的图：{exc}")
+            return True
+        if plan.action == "search" and plan.query and self.features.search:
+            log.info("语义分割：%s", describe_plan(plan))
+            await self._deliver(incoming, "我去网上看看…")
+            await self._deliver(incoming, await self._search(plan.query))
+            return True
         if self.features.vision and choose_modality(compact, self.features.voice_threshold, self.features.image_threshold) == "image":
             try:
                 path = await self._image_for(compact, "给你找的")
@@ -322,6 +343,21 @@ class Engine:
             await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
             return True
         return False
+
+    async def _cache_cleanup_loop(self) -> None:
+        while True:
+            try:
+                removed, size = await asyncio.to_thread(
+                    cache_store.cleanup,
+                    self.cfg.data_dir,
+                    self.features.cache_keep_days,
+                    self.features.cache_max_mb,
+                )
+                if removed:
+                    log.info("缓存清理：删除 %s 个文件，剩余 %.1f MB", removed, size / 1024 / 1024)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("缓存清理失败：%s", exc)
+            await asyncio.sleep(6 * 3600)
 
     async def _auto_search_loop(self) -> None:
         while True:
@@ -512,46 +548,42 @@ class Engine:
             return
         await self._send_media(incoming, "file", str(path), caption="")
 
-    async def _image_for(self, user_text: str, reply: str) -> Path:
+    async def _image_for(self, user_text: str, reply: str, direct: bool = False) -> Path:
         key = get_key(self.cfg.data_dir, "brave")
         if not key:
             raise ToolError("没配 Brave Key，发不了图")
-        try:
-            raw = await self.llm.complete(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "判断对方是不是在明确要求你发一张图。只输出 JSON："
-                            '{"need":true,"query":"适合图片搜索的中文关键词"} 或 {"need":false}。'
-                            "没有具体对象、只是让你看文字/看聊天记录时 need=false。"
-                        ),
-                    },
-                    {"role": "user", "content": user_text},
-                ],
-                temperature=0.1,
-                max_tokens=80,
-            )
-            data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
-        except Exception:
-            raise ToolError("没听懂要什么图") from None
-        query = str(data.get("query") or "").strip()
+        query = user_text.strip() if direct else ""
+        if not query:
+            try:
+                raw = await self.llm.complete(
+                    [
+                        {
+                            "role": "system",
+                            "content": (
+                                "从这句话里提取要搜索的图片主体，只输出 JSON："
+                                '{"query":"简短中文关键词"} 或 {"query":""}。不要解释。'
+                            ),
+                        },
+                        {"role": "user", "content": user_text},
+                    ],
+                    temperature=0.1,
+                    max_tokens=60,
+                )
+                data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
+                query = str(data.get("query") or "").strip()
+            except Exception:  # noqa: BLE001
+                query = ""
         if not query:
             query = re.sub(
-                r"^(能不能|可以|帮我|给我|麻烦)?\s*(搜张|搜个|找张|找张图|发张|发个|来张|来个|整张|画一个|画个|看看|瞧瞧)",
+                r"^(能不能|可以|帮我|给我|麻烦)?\s*(搜张|搜个|找张|找张图|发张|发个|来张|来个|整张|画一个|画个|看看|瞧瞧|搜|找|发|来)",
                 "",
                 user_text,
             )
-            query = re.sub(r"(长什么样|长啥样|什么样子|啥样子|图片|照片|表情包|图)$", "", query).strip(" 的：:，,")
+            query = re.sub(r"(长什么样|长啥样|什么样子|啥样子|图片|照片|表情包|图)$", "", query)
         query = re.sub(r"(发来|发给我|给我|看看|一下|呗|吧|啊)$", "", query).strip(" 的：:，,")
         if not query:
             raise ToolError("没提取到图片主体")
         url = await asyncio.to_thread(brave_image, key, query)
-        if not url:
-            simple = re.sub(r"(发来|发给我|给我|看看|一下|呗|吧|啊).*$", "", user_text)
-            simple = re.sub(r"^(搜张|搜个|找张|来张|发张|给张|整张)", "", simple).strip(" 的：:，,")
-            if simple and simple != query:
-                url = await asyncio.to_thread(brave_image, key, simple)
         if not url:
             raise ToolError("没搜到合适的图")
         path = await asyncio.to_thread(download, url, self.cfg.data_dir / "cache" / "images", 8)
@@ -599,7 +631,12 @@ class Engine:
             who = self.cfg.bot_name if item.get("role") == "assistant" else (item.get("name") or "群友")
             lines.append(f"{who}：{item.get('text') or ''}")
         context = "\n".join(lines)
+        query = ""
+        if direct:
+            query = user_text.strip()
         try:
+            if query:
+                raise LookupError
             raw = await self.llm.complete(
                 [
                     {

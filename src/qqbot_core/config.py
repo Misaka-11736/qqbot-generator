@@ -175,6 +175,8 @@ class Config:
             f"download_max_mb = {self.features.download_max_mb}",
             f"summary_max = {self.features.summary_max}",
             f"archive_days = {self.features.archive_days}",
+            f"cache_keep_days = {self.features.cache_keep_days}",
+            f"cache_max_mb = {self.features.cache_max_mb}",
             f"auto_search = {str(self.features.auto_search).lower()}",
             f"auto_search_interval = {self.features.auto_search_interval}",
             f"auto_search_target = {_q(self.features.auto_search_target)}",
