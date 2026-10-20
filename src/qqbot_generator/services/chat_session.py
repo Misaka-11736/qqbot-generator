@@ -77,7 +77,7 @@ class ChatSession(QObject):
             self.failed.emit(str(exc))
 
     def iq(self) -> int:
-        return self.engine.memory.iq(KEY)
+        return int(self._cfg.persona.default_iq)
 
     def history(self) -> list[dict]:
         return self.engine.memory.history(KEY)

@@ -18,7 +18,7 @@ from .icons import icon
 NAV_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ("控制台", [("home", "首页", "home"), ("bot", "机器人", "bot"), ("model", "模型", "model"), ("persona", "人格", "persona"), ("capabilities", "能力", "plug")]),
     ("部署", [("napcat", "NapCat", "plug"), ("chat", "试聊", "chat"), ("logs", "日志", "terminal")]),
-    ("其他", [("settings", "设置", "gear"), ("about", "关于", "info")]),
+    ("其他", [("tutorial", "教程", "info"), ("settings", "设置", "gear"), ("about", "关于", "info")]),
 ]
 
 

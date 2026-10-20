@@ -21,6 +21,7 @@ from .config import Config, load_config
 from .features import style_prompt
 from .keyvault import get_key
 from .llm import LLMError
+from .intent import classify as classify_intent
 from .media import extract_frames, media_sources, read_text_attachment
 from .memory import Memory
 from .message import Incoming, parse_event
@@ -71,6 +72,8 @@ class Engine:
         self._auto_task: asyncio.Task | None = None
         self._cache_task: asyncio.Task | None = None
         self._last_tasks: dict[str, dict] = {}
+        self._summary_counts: dict[str, int] = {}
+        self._config_task: asyncio.Task | None = None
         self._search_day = ""
         self._search_used = 0
         self.features = cfg.features
@@ -112,6 +115,8 @@ class Engine:
             self._auto_task = asyncio.create_task(self._auto_search_loop())
         if self._cache_task is None or self._cache_task.done():
             self._cache_task = asyncio.create_task(self._cache_cleanup_loop())
+        if self._config_task is None or self._config_task.done():
+            self._config_task = asyncio.create_task(self._config_watch_loop())
 
     # ---------------- 事件入口 ----------------
 
@@ -133,7 +138,23 @@ class Engine:
             self.cfg = new
             self.features = new.features
             self._cfg_mtime = mtime
-            log.info("配置热加载：IQ=%s 风格 tone=%s", new.persona.default_iq, new.features.tone)
+            log.info(
+                "[config] IQ=%s preset=%s tone=%s verbosity=%s emoji=%s reply=%s "
+                "image_thr=%s voice_thr=%s search_thr=%s vision=%s search=%s voice_in=%s voice_out=%s",
+                new.persona.default_iq,
+                new.persona.preset,
+                new.features.tone,
+                new.features.verbosity,
+                new.features.emoji,
+                new.features.reply_format,
+                new.features.image_threshold,
+                new.features.voice_threshold,
+                new.features.search_threshold,
+                new.features.vision,
+                new.features.search,
+                new.features.voice_in,
+                new.features.voice_out,
+            )
         except Exception as exc:  # noqa: BLE001
             log.warning("配置热加载失败：%s", exc)
 
@@ -154,6 +175,11 @@ class Engine:
         self._remember_seen(incoming.message_id)
         self.memory.remember_user(incoming.user_id, incoming.sender_name)
 
+        count = self._summary_counts.get(incoming.conversation_key, 0) + 1
+        self._summary_counts[incoming.conversation_key] = count
+        if count % 30 == 0 and self.archive is not None:
+            asyncio.create_task(self._log_context_summary(incoming.conversation_key))
+
         tags = classify_text(incoming.text) if (self.features.classify and incoming.text) else []
         if self.archive is not None:
             try:
@@ -162,6 +188,14 @@ class Engine:
                 log.warning("归档失败：%s", exc)
 
         text = incoming.text.strip()
+        log.info(
+            "[recv] %s %s(%s)：%s%s",
+            incoming.conversation_key,
+            incoming.sender_name,
+            incoming.user_id,
+            text[:1000] or "（无文字）",
+            "  media=" + ",".join(str(s.get("type")) for s in incoming.segments if s.get("type") not in ("text", "at", "reply")) if incoming.segments else "",
+        )
         voices = voice_sources(incoming.segments)
         if voices and self.features.voice_in:
             log.info("收到语音，开始识别")
@@ -207,14 +241,16 @@ class Engine:
         if await self._natural_intent(text, incoming):
             return
 
-        prefix = self.cfg.chat.prefixes
-        at_me_or_private = incoming.at_me or not incoming.is_group
-        command = parse_command(text, prefix, allow_bare=at_me_or_private)
-        if command is not None:
-            if await self._run_capability(command[0], command[1], incoming):
-                return
-            await self._run_command(command[0], command[1], incoming)
-            return
+        if text.startswith("/"):
+            if text.strip().lower().startswith("/reset"):
+                if incoming.user_id in self.cfg.admin_qq:
+                    self.memory.reset(incoming.conversation_key)
+                    log.info("[command] /reset by %s", incoming.user_id)
+                    await self._deliver(incoming, "已重置当前会话。")
+                    return
+                log.info("[command] 非管理员 /reset，按普通聊天处理")
+            else:
+                log.info("[command] 忽略旧指令，按普通聊天处理：%s", text[:40])
 
         if not self._should_reply(incoming, text):
             return
@@ -226,6 +262,27 @@ class Engine:
         await self._reply(incoming, text)
 
     # ---------------- 指令 ----------------
+
+    async def _log_context_summary(self, conversation: str) -> None:
+        if self.archive is None:
+            return
+        rows = self.archive.recent(conversation, 40)
+        if len(rows) < 10:
+            return
+        text = "\n".join(f"{r['name']}：{r['text']}" for r in rows)
+        try:
+            summary = await self.llm.complete(
+                [
+                    {"role": "system", "content": "总结这段群聊：当前话题、主要结论、未解决的问题。中文，200 字以内。"},
+                    {"role": "user", "content": text[:8000]},
+                ],
+                temperature=0.3,
+                max_tokens=300,
+            )
+            self.archive.save_summary(conversation, len(rows), summary)
+            log.info("[summary] %s %s", conversation, summary.strip()[:500])
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[summary] 失败：%s", exc)
 
     def _want_vision(self, incoming: Incoming, text: str) -> bool:
         if not incoming.is_group:
@@ -279,69 +336,62 @@ class Engine:
             await self._deliver(incoming, part)
 
     async def _natural_intent(self, text: str, incoming: Incoming) -> bool:
-        """不用 / 指令：直接说“搜一下…”也能触发。"""
         compact = text.strip()
-        plan = parse_semantic(compact)
-        if plan.action == "search" or plan.measure:
-            log.info("语义分割：%s", describe_plan(plan))
-            context = self._last_tasks.get(incoming.conversation_key, {})
-            query = plan.query or str(context.get("query") or "")
-            if plan.normalized:
-                log.info("错别字归一：%s → %s", plan.raw, plan.normalized)
-            if not query:
-                await self._deliver(incoming, "搜什么？给我个词。")
-                return True
-            if context and not plan.query:
-                log.info("上下文补全：%s", query)
-            image_task = plan.modality == "image" or bool(plan.measure)
-            self._last_tasks[incoming.conversation_key] = {
-                "query": query,
-                "modality": "image" if image_task else plan.modality,
-            }
-            if image_task and self.features.vision:
-                try:
-                    path = await self._image_for(query, "给你找的", direct=True)
-                    await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
-                except ToolError as exc:
-                    log.info("图片任务失败：%s", exc)
-                    await self._deliver(incoming, f"没找到合适的图：{exc}")
-                return True
-            if self.features.search:
-                await self._deliver(incoming, "我去网上看看…")
-                await self._deliver(incoming, await self._search(query))
-            return True
-        if self.features.vision and choose_modality(compact, self.features.voice_threshold, self.features.image_threshold) == "image":
-            try:
-                path = await self._image_for(compact, "给你找的")
-                await self._send_media(incoming, "image", str(path), caption="搜到一张")
-                return True
-            except ToolError as exc:
-                log.info("图片任务没找到图：%s", exc)
-        if await self._compound_tasks(compact, incoming):
-            return True
-        query = search_query(compact, self.features.search_threshold)
-        if query and self.features.search:
-            log.info("自然语言搜索：%s", query[:60])
-            await self._deliver(incoming, "我去网上看看…")
-            await self._deliver(incoming, await self._search(query))
-            return True
+
         summary = re.match(
             r"^(?:你|帮我|给我)?\s*(?:总结|汇总)(?:一下|下)?(?:\s*(?:最近)?\s*(\d{1,4})\s*条)?\s*$",
             compact,
         )
         if summary and self.features.summarize:
-            log.info("自然语言总结：%s 条", summary.group(1) or self.features.summary_max)
+            log.info("[task] 总结 %s 条", summary.group(1) or self.features.summary_max)
             count = int(summary.group(1) or self.features.summary_max)
             count = max(10, min(count, self.features.summary_max))
             await self._deliver(incoming, "正在翻记录，等我一下…")
             for part in split_text(await self._summarize(incoming.conversation_key, count), limit=1600):
                 await self._deliver(incoming, part)
             return True
+
         if self.features.download and ("下载" in compact or "存一下" in compact or "保存" in compact):
             url = re.search(r"https?://\S+", compact)
             if url:
                 await self._deliver(incoming, await self._download(url.group(0)))
                 return True
+
+        decision = classify_intent(compact, vision=self.features.vision, search=self.features.search)
+        log.info("[intent] %s（%s）", decision.kind, decision.reason)
+        if decision.kind != "task" or decision.plan is None:
+            return False
+        plan = decision.plan
+        log.info("[plan] %s", describe_plan(plan))
+        if plan.normalized:
+            log.info("[normalize] %s → %s", plan.raw, plan.normalized)
+
+        context = self._last_tasks.get(incoming.conversation_key, {})
+        query = plan.query or str(context.get("query") or "")
+        if not query:
+            await self._deliver(incoming, "搜什么？给我个词。")
+            return True
+        if context and not plan.query:
+            log.info("[context] 回填上一次主体：%s", query)
+        image_task = plan.modality == "image" or bool(plan.measure)
+        self._last_tasks[incoming.conversation_key] = {
+            "query": query,
+            "modality": "image" if image_task else plan.modality,
+        }
+        if image_task and self.features.vision:
+            log.info("[task] 图片搜索：%s", query)
+            try:
+                path = await self._image_for(query, "给你找的", direct=True)
+                await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
+            except ToolError as exc:
+                log.info("[task] 图片失败：%s", exc)
+                await self._deliver(incoming, f"没找到合适的图：{exc}")
+            return True
+        if self.features.search and plan.action == "search":
+            log.info("[task] 网页搜索：%s", query)
+            await self._deliver(incoming, "我去网上看看…")
+            await self._deliver(incoming, await self._search(query))
+            return True
         return False
 
     async def _compound_tasks(self, text: str, incoming: Incoming) -> bool:
@@ -358,6 +408,11 @@ class Engine:
             await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
             return True
         return False
+
+    async def _config_watch_loop(self) -> None:
+        while True:
+            self._maybe_reload()
+            await asyncio.sleep(1)
 
     async def _cache_cleanup_loop(self) -> None:
         while True:
@@ -766,8 +821,8 @@ class Engine:
     async def _reply(self, incoming: Incoming, text: str) -> None:
         key = incoming.conversation_key
         lock = self._locks.setdefault(key, asyncio.Lock())
-        iq = self.memory.iq(key)
-        preset = self.memory.persona(key, self.cfg.persona.preset)
+        iq = int(self.cfg.persona.default_iq)
+        preset = self.cfg.persona.preset
 
         async with lock:
             messages = self._build_messages(incoming, text, iq, preset)
@@ -794,6 +849,7 @@ class Engine:
                 log.exception("模型调用异常：%s", exc)
                 raw = random.choice(FALLBACK_LINES)
 
+        log.info("[llm] raw=%s", (raw or "")[:1200].replace("\n", " "))
         reply = clean_reply(raw)
         reply = self._de_assistant(reply)
         if not reply:
@@ -804,6 +860,7 @@ class Engine:
         if not self.cfg.chat.split_long_reply:
             parts = ["".join(parts)]
 
+        log.info("[state] IQ=%s preset=%s style(tone=%s verbosity=%s emoji=%s)", iq, preset, self.features.tone, self.features.verbosity, self.features.emoji)
         self.memory.add(key, "user", text, incoming.sender_name)
         self.memory.add(key, "assistant", "".join(parts), self.cfg.bot_name)
         self.memory.mark_chat(key)
@@ -916,6 +973,7 @@ class Engine:
                 )
                 if isinstance(data, dict) and data.get("message_id"):
                     self._track_sent(int(data["message_id"]))
+                    log.info("[send] text msg_id=%s len=%s", data.get("message_id"), len(text))
             else:
                 log.warning("没有可用的发送通道，丢弃回复：%s", text)
         except Exception as exc:
