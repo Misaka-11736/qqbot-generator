@@ -256,9 +256,33 @@ class NapCatPage(BasePage):
         self.detail.setText("已写入：" + "、".join(p.name for p in updated))
         self._refresh()
 
+    def _preflight(self, folder) -> bool:
+        ok, message = napcat.check_environment(folder)
+        if ok:
+            return True
+        from PySide6.QtWidgets import QMessageBox
+
+        box = QMessageBox(self)
+        box.setWindowTitle("无法启动 NapCat")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("NapCat 注入文件检查未通过")
+        box.setInformativeText(message)
+        download = box.addButton("打开 NapCat 下载页", QMessageBox.ButtonRole.ActionRole)
+        force = box.addButton("仍然启动", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is download:
+            import webbrowser
+
+            webbrowser.open("https://github.com/NapNeko/NapCatQQ/releases")
+            return False
+        return box.clickedButton() is force
+
     def _launch(self) -> None:
         folder = self._folder()
         if folder is None:
+            return
+        if not self._preflight(folder):
             return
         ok, message = napcat.launch_hidden(folder)
         self.ctx.toast(message)
@@ -268,6 +292,8 @@ class NapCatPage(BasePage):
     def _launch_visible(self) -> None:
         folder = self._folder()
         if folder is None:
+            return
+        if not self._preflight(folder):
             return
         _ok, message = napcat.launch(folder)
         self.ctx.toast(message)

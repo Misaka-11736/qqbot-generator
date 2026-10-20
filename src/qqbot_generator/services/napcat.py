@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import glob
 import json
 import os
 import urllib.request
@@ -220,3 +221,61 @@ def extract(zip_path: Path, dest: Path) -> Path:
         if item.is_dir() and is_install(item):
             return item
     return dest
+
+
+def _qq_roots() -> list[Path]:
+    roots = [
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tencent" / "QQNT",
+        Path(r"C:\Program Files\Tencent\QQNT"),
+        Path(r"D:\QQNT"),
+        Path(r"E:\QQNT"),
+    ]
+    try:
+        import winreg
+
+        for hive, key in (
+            (winreg.HKEY_CURRENT_USER, r"Software\Tencent\QQNT"),
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\Tencent\QQNT"),
+        ):
+            try:
+                with winreg.OpenKey(hive, key) as handle:
+                    value, _ = winreg.QueryValueEx(handle, "InstallPath")
+                    roots.append(Path(value))
+            except OSError:
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+    return [r for r in dict.fromkeys(roots) if r.is_dir()]
+
+
+def check_environment(folder: Path) -> tuple[bool, str]:
+    """启动前检查 NapCat 注入文件，避免 QQ 弹 JS 错误。"""
+    missing = [name for name in ("NapCatWinBootMain.exe", "NapCatWinBootHook.dll") if not (folder / name).is_file()]
+    if not launch_script(folder):
+        missing.append("launcher.bat")
+    if missing:
+        return False, "NapCat 目录不完整，缺少：" + "、".join(missing) + "\n请重新解压完整 NapCat Shell 包。"
+
+    roots = _qq_roots()
+    if not roots:
+        return True, "未找到 QQ 安装目录，跳过注入文件检查（若 QQ 报 loadNapCat.js 缺失，请手动设置 QQ 路径）。"
+    for root in roots:
+        direct = root / "resources" / "app" / "loadNapCat.js"
+        if direct.is_file():
+            return True, ""
+        versions = sorted(root.glob("versions/*/resources/app/loadNapCat.js"))
+        if versions:
+            return True, ""
+    version_dirs = []
+    for root in roots:
+        version_dirs.extend(root.glob("versions/*/resources/app"))
+    hint = str(version_dirs[-1]) if version_dirs else str(roots[0] / "versions" / "<版本>" / "resources" / "app")
+    return False, (
+        "NapCat 注入文件缺失：QQ 版本目录里没有 loadNapCat.js。\n"
+        f"应存在：{hint}\\loadNapCat.js\n\n"
+        "处理：\n"
+        "1. 完全退出 QQ；\n"
+        "2. 把 NapCat 包里的 loadNapCat.js 复制到上述目录；\n"
+        "3. 或重新安装与当前 QQ 版本匹配的 NapCat；\n"
+        "4. 把 QQ 和 NapCat 目录加入杀软排除。"
+    )

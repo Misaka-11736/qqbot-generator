@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QPoint, Qt, QTimer
-from PySide6.QtGui import QAction, QColor, QIcon, QPalette
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -28,6 +28,7 @@ from .pages.base import BasePage
 from .services.config_service import ConfigService
 from .services.logbus import LogBus
 from .services.process_manager import ProcessManager
+from .services.update_check import UpdateChecker
 from .theme import app_font, qss
 from .widgets.common import StatusPill, Toast
 from .widgets.mascot import mascot_pixmap
@@ -125,6 +126,7 @@ class MainWindow(QMainWindow):
         ctx.logbus.line.connect(self._on_log_line)
 
         self._build_tray()
+        QTimer.singleShot(3000, lambda: self._check_updates(False))
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(2000)
         self._status_timer.timeout.connect(self._sync_napcat_status)
@@ -404,6 +406,8 @@ class MainWindow(QMainWindow):
         start.triggered.connect(lambda: self.ctx.process.start())
         stop = QAction("停止机器人", self)
         stop.triggered.connect(lambda: self.ctx.process.stop())
+        update_action = QAction("检查更新", self)
+        update_action.triggered.connect(lambda: self._check_updates(True))
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self._quit)
         menu.addAction(show)
@@ -411,12 +415,37 @@ class MainWindow(QMainWindow):
         menu.addAction(start)
         menu.addAction(stop)
         menu.addSeparator()
+        menu.addAction(update_action)
+        menu.addSeparator()
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
             lambda reason: self._restore() if reason == QSystemTrayIcon.ActivationReason.DoubleClick else None
         )
         self.tray.show()
+
+    def _check_updates(self, manual: bool) -> None:
+        checker = getattr(self, "_update_checker", None)
+        if checker is not None and checker.isRunning():
+            return
+        self._manual_update = manual
+        self._update_checker = UpdateChecker(paths.APP_VERSION)
+        self._update_checker.result.connect(self._on_update_result)
+        self._update_checker.start()
+
+    def _on_update_result(self, newer: bool, tag: str, url: str) -> None:
+        if newer:
+            box = QMessageBox(self)
+            box.setWindowTitle("发现新版本")
+            box.setText(f"新版本 {tag} 可用，当前是 v{paths.APP_VERSION}。")
+            box.setInformativeText("是否打开 GitHub Release 下载安装包？")
+            open_btn = box.addButton("去下载", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is open_btn and url:
+                QDesktopServices.openUrl(QUrl(url))
+        elif getattr(self, "_manual_update", False):
+            self.toast.show_message("已经是最新版本")
 
     def _restore(self) -> None:
         self.showNormal()
