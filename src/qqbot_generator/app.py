@@ -125,6 +125,10 @@ class MainWindow(QMainWindow):
         ctx.logbus.line.connect(self._on_log_line)
 
         self._build_tray()
+        self._status_timer = QTimer(self)
+        self._status_timer.setInterval(2000)
+        self._status_timer.timeout.connect(self._sync_napcat_status)
+        self._status_timer.start()
         self._hit_filter = _HitTestFilter(self)
         QApplication.instance().installNativeEventFilter(self._hit_filter)
         self.show_page("home")
@@ -280,6 +284,29 @@ class MainWindow(QMainWindow):
         page = self.stack.currentWidget()
         if isinstance(page, BasePage):
             page.on_show()
+
+    def _sync_napcat_status(self) -> None:
+        lines = self.ctx.logbus.read_all()[-400:]
+        connected = False
+        account = ""
+        for line in lines:
+            if "NapCat 已接入" in line:
+                connected = True
+            elif "NapCat 连接断开" in line:
+                connected = False
+                account = ""
+            elif "登录账号：" in line:
+                account = line.split("登录账号：", 1)[-1].strip()
+        if not self.ctx.process.running:
+            connected = False
+            account = ""
+        if connected != self._napcat_connected or account != self._account:
+            self._napcat_connected = connected
+            self._account = account
+            self.refresh_status()
+            page = self.stack.currentWidget()
+            if isinstance(page, BasePage):
+                page.on_show()
 
     def _on_log_line(self, line: str) -> None:
         if "NapCat 已接入" in line:

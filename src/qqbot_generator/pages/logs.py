@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections import deque
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -62,11 +63,25 @@ class LogsPage(BasePage):
         self.view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.view.setPlaceholderText("还没有日志。回首页点「启动机器人」，这里就会开始滚动。")
         self.add(self.view, 1)
+        self._tail_timer = QTimer(self)
+        self._tail_timer.setInterval(1000)
+        self._tail_timer.timeout.connect(self._sync_tail)
+        self._tail_timer.start()
         self.ctx.logbus.line.connect(self._append)
         self.ctx.logbus.switched.connect(lambda name: self.file_label.setText(name))
 
     def on_show(self) -> None:
         if not self._loaded:
+            self.reload()
+
+    def _sync_tail(self) -> None:
+        path = self.ctx.logbus.current_file()
+        try:
+            size = path.stat().st_size if path else 0
+        except OSError:
+            return
+        if size != getattr(self, "_last_size", -1):
+            self._last_size = size
             self.reload()
 
     def reload(self) -> None:

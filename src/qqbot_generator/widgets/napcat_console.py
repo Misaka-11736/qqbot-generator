@@ -294,7 +294,17 @@ class NapCatConsole(Card):
         self.ws.open(QUrl(self.client.terminal_url(self.session_id)))
 
     def _on_term(self, text: str) -> None:
-        self.term.appendPlainText(ANSI.sub("", text).replace("\r", ""))
+        try:
+            import json
+
+            payload = json.loads(text)
+            if isinstance(payload, dict) and payload.get("type") == "output":
+                text = str(payload.get("data") or "")
+        except (ValueError, TypeError):
+            pass
+        clean = ANSI.sub("", text).replace("\r", "")
+        if clean.strip():
+            self.term.appendPlainText(clean)
 
     def _send_command(self) -> None:
         text = self.command.text()
