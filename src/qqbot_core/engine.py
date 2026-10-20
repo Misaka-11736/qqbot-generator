@@ -32,7 +32,7 @@ from .semantic import describe as describe_plan
 from .semantic import parse as parse_semantic
 from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
 from .util import RateLimiter, clean_reply, pretty_seconds, split_text
-from .vision import look_at_frames, looks_like_image_question
+from .vision import caption_frames, look_at_frames, looks_like_image_question
 from .voice import prepare as prepare_voice
 from .voice import synthesize, transcribe, voice_sources, wants_voice
 
@@ -218,13 +218,18 @@ class Engine:
         if await self.plugins.dispatch(incoming, text):
             return
         media = media_sources(incoming.segments)
+        if not media and incoming.reply_id:
+            media = await self._reply_media(incoming)
+            if media:
+                log.info("[media] 从被回复消息取到 %s 个媒体", len(media))
         if media:
             if not self.features.vision:
                 log.info("收到媒体，但识图开关是关的")
             elif not self._want_vision(incoming, text):
                 log.info("收到媒体，但没带问题也没 @，跳过：%s", text[:30])
             else:
-                await self._vision_reply(incoming, text, media)
+                search_like = bool(re.search(r"(搜|找|查).{0,6}(这个|这张|它|同款|类似)", text))
+                await self._vision_reply(incoming, text, media, search=search_like)
                 return
         if not text:
             return
@@ -293,7 +298,7 @@ class Engine:
             return True
         return looks_like_image_question(text)
 
-    async def _vision_reply(self, incoming: Incoming, text: str, media: list[dict]) -> None:
+    async def _vision_reply(self, incoming: Incoming, text: str, media: list[dict], search: bool = False) -> None:
         log.info("识图/媒体触发：%s（%s）", (text or "无文字")[:60], ",".join(m["kind"] for m in media))
         key = get_key(self.cfg.data_dir, "qwen")
         if not key:
@@ -315,6 +320,16 @@ class Engine:
                 notes.append(note)
         answer = ""
         if frames:
+            if search:
+                query = await asyncio.to_thread(caption_frames, frames, key, self.features.vision_model)
+                if query:
+                    log.info("[vision] 以图搜图关键词：%s", query)
+                    try:
+                        path = await self._image_for(query, "按图搜的", direct=True)
+                        await self._send_media(incoming, "image", str(path), caption=f"按图搜到：{query}")
+                        return
+                    except ToolError as exc:
+                        log.info("[vision] 以图搜图失败：%s", exc)
             answer = await asyncio.to_thread(
                 look_at_frames,
                 frames,
@@ -666,6 +681,40 @@ class Engine:
             if img.width < 200 or img.height < 200:
                 raise ToolError("搜到的图太小")
         return path
+
+    async def _reply_media(self, incoming: Incoming) -> list[dict]:
+        if self.link is None or not incoming.reply_id:
+            return []
+        try:
+            data = await self.link.call("get_msg", {"message_id": incoming.reply_id}, timeout=10)
+        except Exception as exc:  # noqa: BLE001
+            log.info("[media] 取被回复消息失败：%s", exc)
+            return []
+        if not isinstance(data, dict):
+            return []
+        message = data.get("message") or data.get("messages") or []
+        if isinstance(message, str):
+            return []
+        media = media_sources(message) if isinstance(message, list) else []
+        for seg in message if isinstance(message, list) else []:
+            if not isinstance(seg, dict) or seg.get("type") != "forward":
+                continue
+            fid = str((seg.get("data") or {}).get("id") or "")
+            if not fid:
+                continue
+            try:
+                fwd = await self.link.call("get_forward_msg", {"id": fid}, timeout=15)
+            except Exception as exc:  # noqa: BLE001
+                log.info("[media] 展开合并转发失败：%s", exc)
+                continue
+            nodes = []
+            if isinstance(fwd, dict):
+                nodes = fwd.get("messages") or fwd.get("message") or []
+            for node in nodes if isinstance(nodes, list) else []:
+                content = node.get("message") if isinstance(node, dict) else None
+                if isinstance(content, list):
+                    media += media_sources(content)
+        return media
 
     async def _send_voice(self, incoming: Incoming, path: str) -> None:
         if self.link is None:

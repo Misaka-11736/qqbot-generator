@@ -183,3 +183,34 @@ def look_at_frames(frames: list[Path], key: str, model: str, question: str, extr
         return "识图没返回内容。"
     text = re.sub(r"https?://\S+", "", text)
     return re.sub(r"\n{2,}", "\n", text).strip()[:500]
+
+
+def caption_frames(frames: list[Path], key: str, model: str) -> str:
+    if not key or not frames:
+        return ""
+    content: list[dict] = [{"type": "text", "text": "用不超过 10 个字概括这张图的主体/商品/角色，只输出关键词，不要解释。"}]
+    for frame in frames[:1]:
+        try:
+            content.append({"type": "image_url", "image_url": {"url": _data_uri(frame)}})
+        except Exception:  # noqa: BLE001
+            continue
+    if len(content) == 1:
+        return ""
+    payload = {
+        "model": model or "qwen3-vl-plus",
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.2,
+        "max_tokens": 40,
+    }
+    req = urllib.request.Request(
+        VISION_BASE,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        return str(data["choices"][0]["message"]["content"]).strip().splitlines()[0][:40]
+    except Exception:  # noqa: BLE001
+        return ""
