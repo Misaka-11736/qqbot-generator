@@ -35,6 +35,7 @@ def parse(text: str) -> SemanticPlan:
     raw = (text or "").strip()
     original = raw
     raw = re.sub(r"^在(?=(搜|查|找|发|来|整|看|画))", "再", raw)
+    raw = re.sub(r"^(?:(?:能不能|可以|可不可以|麻烦|请|你|帮我|给我|替我)\s*)+", "", raw)
     raw = re.sub(r"^(再|又|还|继续|接着)\s*", "", raw)
     plan = SemanticPlan(raw=original)
     if raw != original:

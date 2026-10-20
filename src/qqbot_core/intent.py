@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from .semantic import SemanticPlan, parse
 
 PAST = ("搜了", "搜过", "搜到", "查了", "查过", "发了", "发过", "找到", "买了", "有一张", "有一份")
+SPLIT = re.compile(r"[，,。；;！!？?\n]+")
 
 
 @dataclass
@@ -17,27 +18,38 @@ class Intent:
     plan: SemanticPlan | None = None
 
 
+def _is_request(clause: str, plan: SemanticPlan) -> bool:
+    if any(word in clause for word in PAST):
+        return False
+    if plan.action == "search":
+        return True
+    if re.match(
+        r"^(再|又|还|继续|帮我|给我|替我|麻烦|请|能不能|可以)?\s*(搜|查|找|发|来|画|整|要|给)",
+        plan.normalized or clause,
+    ):
+        return True
+    if re.search(r"(帮我|给我|替我|能不能|可以|麻烦|请).{0,8}(搜|查|找|发|来|画|整)", clause):
+        return True
+    if re.search(r"(搜|查|找|发|来|画)(一下|一搜|个)?[^，,。；;]{1,20}", clause):
+        return True
+    return False
+
+
 def classify(text: str, *, vision: bool, search: bool) -> Intent:
     raw = (text or "").strip()
     if not raw:
         return Intent("chat", "空消息")
-    if any(word in raw for word in PAST):
-        return Intent("chat", "过去时/陈述句")
-    plan = parse(raw)
-
-    request = plan.action == "search"
-    if not request and re.match(r"^(再|又|还|继续)?\s*(搜|查|找|发|来|画|整|要|给)", plan.normalized or raw):
-        request = True
-    if not request and re.search(r"(帮我|给我|替我|能不能|可以|麻烦|请).{0,8}(搜|查|找|发|来|画|整)", raw):
-        request = True
-    if not request and re.search(r"(搜|查|找|发|来|画).{0,4}(张|个|条|幅|段)", raw):
-        request = True
-    if not request:
-        return Intent("chat", "没有明确请求动作", plan)
-
-    wants_image = plan.measure in ("张", "一张", "两张", "几张", "张图", "个图", "幅")
-    if wants_image and not vision:
-        return Intent("chat", "图片能力已关闭", plan)
-    if not wants_image and plan.action == "search" and not search:
-        return Intent("chat", "搜索能力已关闭", plan)
-    return Intent("task", "明确请求 + 能力可用", plan)
+    clauses = [c.strip() for c in SPLIT.split(raw) if c.strip()]
+    if not clauses:
+        return Intent("chat", "空消息")
+    for clause in reversed(clauses):
+        plan = parse(clause)
+        if not _is_request(clause, plan):
+            continue
+        wants_image = plan.measure in ("张", "一张", "两张", "几张", "张图", "个图", "幅")
+        if wants_image and not vision:
+            return Intent("chat", "图片能力已关闭", plan)
+        if not wants_image and plan.action == "search" and not search:
+            return Intent("chat", "搜索能力已关闭", plan)
+        return Intent("task", f"请求子句：{clause}", plan)
+    return Intent("chat", "没有明确请求子句", parse(raw))
