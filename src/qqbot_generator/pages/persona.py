@@ -94,13 +94,16 @@ class PersonaPage(BasePage):
         row.setSpacing(16)
 
         pick = Card()
-        title = QLabel("选一个底色")
+        title = QLabel("三套人格")
         title.setObjectName("cardTitle")
         pick.add(title)
         self.preset_group = QButtonGroup(self)
         self.preset_buttons: dict[str, QPushButton] = {}
+        self.slot_by_preset = {str(s.get("preset")): s for s in self.ctx.cfg.persona.slots}
         for key, name in PRESETS.items():
-            button = QPushButton(f"{name}\n{DESCRIPTIONS.get(key, '')}")
+            slot = self.slot_by_preset.get(key, {})
+            label = f"{str(slot.get('id', '')).upper()} · {slot.get('name', name)}"
+            button = QPushButton(f"{label}\n{DESCRIPTIONS.get(key, '')} · IQ {slot.get('iq', 100)}")
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setMinimumHeight(58)
@@ -114,7 +117,7 @@ class PersonaPage(BasePage):
             self.preset_group.addButton(button)
             self.preset_buttons[key] = button
             pick.add(button)
-        pick.add(_hint("人格只决定语气，智商决定它对你的态度。"))
+        pick.add(_hint("每套人格独立保存提示词、智商和风格；点卡切换。"))
         pick.add_stretch(1)
         row.addWidget(pick, 1)
 
@@ -262,6 +265,7 @@ class PersonaPage(BasePage):
         self.load_iq()
 
     def load(self) -> None:
+        self._select(self.ctx.cfg.persona.preset, load_text=False)
         self.address_check.setChecked(self.ctx.cfg.chat.address_awareness)
         self.join_slider.setValue(self.ctx.cfg.chat.address_threshold)
         self.freq_slider.setValue(int(self.ctx.cfg.chat.group_chat_probability * 100))
@@ -273,9 +277,17 @@ class PersonaPage(BasePage):
         self.iq_slider.setValue(int(self.ctx.cfg.persona.default_iq))
         self._on_iq(self.iq_slider.value())
 
+    def _slot(self) -> dict:
+        for slot in self.ctx.cfg.persona.slots:
+            if slot.get("preset") == self.current:
+                return slot
+        return self.ctx.cfg.persona.slots[0]
+
     def _select(self, key: str, load_text: bool = True) -> None:
         self.current = key
         self.preset_buttons[key].setChecked(True)
+        slot = self._slot()
+        self.iq_slider.setValue(int(slot.get("iq", 100)))
         if load_text:
             self.editor.setPlainText(load_preset(key))
             self.file_hint.setText(f"{key}.md")
@@ -287,6 +299,7 @@ class PersonaPage(BasePage):
         self.iq_bar.setText(f"{value}/200 · {tier.label}")
         self.iq_hint.setText(tier.style)
         self.ctx.cfg.persona.default_iq = value
+        self._slot()["iq"] = value
 
     def save(self) -> None:
         text = self.editor.toPlainText().strip()
@@ -297,6 +310,9 @@ class PersonaPage(BasePage):
         (paths.prompts_dir() / f"{self.current}.md").write_text(text, "utf-8")
         self.ctx.cfg.persona.preset = self.current
         self.ctx.cfg.persona.default_iq = self.iq_slider.value()
+        slot = self._slot()
+        slot["iq"] = self.iq_slider.value()
+        slot["preset"] = self.current
         self.ctx.cfg.chat.address_awareness = self.address_check.isChecked()
         self.ctx.cfg.chat.address_threshold = self.join_slider.value()
         self.ctx.cfg.chat.group_chat_probability = self.freq_slider.value() / 100

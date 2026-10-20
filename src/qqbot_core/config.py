@@ -70,6 +70,11 @@ class PersonaConfig:
     preset: str = "snark"  # 默认人格，见 bot/prompts/
     default_iq: int = 100
     allow_everyone_set_iq: bool = True  # 群里是否允许非管理员调智商
+    slots: list[dict] = field(default_factory=lambda: [
+        {"id": "a", "name": "小鲸鱼", "preset": "snark", "iq": 45, "tone": 30, "verbosity": 35, "emoji": 40, "catchphrase": "", "reply_format": "auto", "address_threshold": 50},
+        {"id": "b", "name": "小鲸鱼", "preset": "soft", "iq": 100, "tone": 75, "verbosity": 50, "emoji": 60, "catchphrase": "", "reply_format": "auto", "address_threshold": 55},
+        {"id": "c", "name": "小鲸鱼", "preset": "nerd", "iq": 160, "tone": 45, "verbosity": 70, "emoji": 25, "catchphrase": "", "reply_format": "text", "address_threshold": 60},
+    ])
 
 
 @dataclass
@@ -187,6 +192,25 @@ class Config:
             f"preset = {_q(self.persona.preset)}",
             f"default_iq = {self.persona.default_iq}",
             f"allow_everyone_set_iq = {str(self.persona.allow_everyone_set_iq).lower()}",
+            "",
+            "",
+            *[
+                line
+                for slot in self.persona.slots
+                for line in [
+                    "[[persona.slots]]",
+                    f"id = {_q(str(slot.get('id', 'a')))}",
+                    f"name = {_q(str(slot.get('name', self.bot_name)))}",
+                    f"preset = {_q(str(slot.get('preset', 'snark')))}",
+                    f"iq = {int(slot.get('iq', 100))}",
+                    f"tone = {int(slot.get('tone', 50))}",
+                    f"verbosity = {int(slot.get('verbosity', 50))}",
+                    f"emoji = {int(slot.get('emoji', 50))}",
+                    f"catchphrase = {_q(str(slot.get('catchphrase', '')))}",
+                    f"reply_format = {_q(str(slot.get('reply_format', 'auto')))}",
+                    f"address_threshold = {int(slot.get('address_threshold', 50))}",
+                ]
+            ],
             "",
             "[log]",
             f"level = {_q(self.log.level)}",
