@@ -142,6 +142,9 @@ class Engine:
                 log.warning("语音识别失败：%s", exc)
                 await self._deliver(incoming, f"这段语音我没听清：{exc}")
                 return
+        if incoming.is_group and not incoming.at_me and incoming.reply_id not in self._sent_set:
+            if self.cfg.chat.address_awareness and not await self._semantic_connected(incoming, text):
+                return
         if await self.plugins.dispatch(incoming, text):
             return
         media = media_sources(incoming.segments)
@@ -542,6 +545,45 @@ class Engine:
             self.stats["errors"] += 1
             log.error("发送媒体失败：%s", exc)
             await self._deliver(incoming, f"发送失败：{exc}")
+
+    async def _semantic_connected(self, incoming: Incoming, text: str) -> bool:
+        """用模型判断新消息和机器人上一句是否语义相接；接不上就不插话。"""
+        if incoming.at_me:
+            return True
+        history = self.memory.history(incoming.conversation_key)[-8:]
+        last_assistant = next((h for h in reversed(history) if h.get("role") == "assistant"), None)
+        if last_assistant is None:
+            return False
+        lines = []
+        for item in history[-6:]:
+            who = self.cfg.bot_name if item.get("role") == "assistant" else (item.get("name") or "群友")
+            lines.append(f"{who}：{item.get('text') or ''}")
+        context = "\n".join(lines)
+        try:
+            raw = await self.llm.complete(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "判断群里这条新消息是不是在接机器人的话。看语义关系，不看关键词："
+                            "补充、反驳、顺着说、回答都算连接；各说各的、换话题不算。"
+                            '只输出 JSON：{"connected":true,"score":85} 或 {"connected":false,"score":10}。'
+                        ),
+                    },
+                    {"role": "user", "content": f"最近对话：\n{context}\n\n新消息（{incoming.sender_name}）：{text}"},
+                ],
+                temperature=0.1,
+                max_tokens=60,
+            )
+            data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
+            score = int(data.get("score") or (80 if data.get("connected") else 0))
+        except Exception:
+            score = self._addressing_score(incoming, text)
+        if score >= self.cfg.chat.address_threshold:
+            log.info("语义连接（%s 分）：%s", score, text[:40])
+            incoming.at_me = True  # 语义相接也按硬回复处理
+            return True
+        return False
 
     def _addressing_score(self, incoming: Incoming, text: str) -> int:
         if incoming.at_me:
