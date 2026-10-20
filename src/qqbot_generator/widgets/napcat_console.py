@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import base64
 import re
+from io import BytesIO
+
+import qrcode
 import socket
 
 from PySide6.QtCore import QThread, Qt, QTimer, QUrl, Signal
@@ -213,6 +216,66 @@ class NapCatConsole(Card):
         if password and used != password:
             self.ctx.toast("已自动使用 webui.json 里的 Token 登录")
         self.password.clear()
+        self._auto_quick_login()
+
+    def _auto_quick_login(self) -> None:
+        try:
+            status = self.client.login_status()
+        except WebUIError:
+            status = {}
+        if status.get("isLogin"):
+            self._finish_login("已登录")
+            return
+        try:
+            accounts = self.client.quick_login_list()
+        except WebUIError:
+            accounts = []
+        if not accounts:
+            self._set_state("没有可快速登录的账号，请扫码", "warn")
+            self._refresh_qr()
+            return
+        account = accounts[0]
+        uin = str(account.get("uin") or "")
+        nick = str(account.get("nickName") or uin)
+        if not uin:
+            self._refresh_qr()
+            return
+        try:
+            self.client.quick_login(uin)
+        except WebUIError as exc:
+            self._set_state(f"快速登录失败：{exc}", "warn")
+            self._refresh_qr()
+            return
+        self._set_state(f"正在快速登录 {nick}…", "info")
+        self._quick_ticks = 0
+        self._quick_timer = QTimer(self)
+        self._quick_timer.setInterval(1500)
+        self._quick_timer.timeout.connect(lambda: self._poll_quick_login(nick))
+        self._quick_timer.start()
+
+    def _poll_quick_login(self, nick: str) -> None:
+        self._quick_ticks += 1
+        try:
+            status = self.client.login_status()
+        except WebUIError:
+            status = {}
+        if status.get("isLogin"):
+            self._quick_timer.stop()
+            self._finish_login(f"已快速登录 {nick}")
+            return
+        if status.get("loginError"):
+            self._quick_timer.stop()
+            self._set_state(f"快速登录失败：{status['loginError']}", "warn")
+            self._refresh_qr()
+            return
+        if self._quick_ticks >= 20:
+            self._quick_timer.stop()
+            self._set_state("快速登录超时，请扫码", "warn")
+            self._refresh_qr()
+
+    def _finish_login(self, message: str) -> None:
+        self._set_state(message, "ok")
+        mark_refreshed(self.state, message)
         self._open_terminal()
         self.timer.start()
         self._poll()
@@ -251,6 +314,11 @@ class NapCatConsole(Card):
         if status.get("isLogin"):
             self._show_logged_in()
             return
+        url = str(status.get("qrcodeurl") or "")
+        if url:
+            self._render_qr(url)
+            self.login_state.setText("等待扫码…（二维码每 15 秒自动刷新）")
+            return
         try:
             data = self.client.qrcode() or self.client.refresh_qrcode()
         except WebUIError as exc:
@@ -264,6 +332,16 @@ class NapCatConsole(Card):
             self.qr.setText("二维码为空\n可能已经登录")
             return
         self.qr.setPixmap(pix.scaled(196, 196, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def _render_qr(self, text: str) -> None:
+        image = qrcode.make(text)
+        buf = BytesIO()
+        image.save(buf, format="PNG")
+        pix = QPixmap()
+        if pix.loadFromData(buf.getvalue()):
+            self.qr.setPixmap(pix.scaled(196, 196, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            self.qr.setText("二维码生成失败")
 
     def _show_logged_in(self) -> None:
         name = ""

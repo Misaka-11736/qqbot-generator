@@ -83,6 +83,14 @@ class NapCatWebUI:
         data = self._request("/api/QQLogin/CheckLoginStatus", {})
         return data if isinstance(data, dict) else {}
 
+    def quick_login_list(self) -> list[dict]:
+        data = self._request("/api/QQLogin/GetQuickLoginListNew", {})
+        return data if isinstance(data, list) else []
+
+    def quick_login(self, uin: str) -> bool:
+        self._request("/api/QQLogin/SetQuickLogin", {"uin": str(uin)})
+        return True
+
     def login_info(self) -> dict:
         data = self._request("/api/QQLogin/GetQQLoginInfo", {})
         return data if isinstance(data, dict) else {}
