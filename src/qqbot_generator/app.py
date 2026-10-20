@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
             self.napcat_pill.set_status("idle", "NapCat 未连接")
 
         if proc.status == "running" and self._napcat_connected:
-            self.sidebar.set_status(f"小鲸在线{(' · ' + self._account) if self._account else ''}", ok=True)
+            self.sidebar.set_status(f"小鲸鱼在线{(' · ' + self._account) if self._account else ''}", ok=True)
         elif proc.status == "running":
             self.sidebar.set_status("机器人已启动，等 NapCat", ok=True)
         else:
@@ -405,7 +405,7 @@ class MainWindow(QMainWindow):
         if self.ctx.process.running:
             box = QMessageBox(self)
             box.setWindowTitle("机器人还在运行")
-            box.setText("要把小鲸留在后台，还是连机器人一起关掉？")
+            box.setText("要把小鲸鱼留在后台，还是连机器人一起关掉？")
             minimize = box.addButton("最小化到托盘", QMessageBox.ButtonRole.AcceptRole)
             quit_button = box.addButton("退出并停止", QMessageBox.ButtonRole.DestructiveRole)
             box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
@@ -414,7 +414,7 @@ class MainWindow(QMainWindow):
                 self.hide()
                 self.tray.showMessage(
                     paths.APP_TITLE,
-                    "小鲸还在后台待命，双击托盘图标回来。",
+                    "小鲸鱼还在后台待命，双击托盘图标回来。",
                     QSystemTrayIcon.MessageIcon.Information,
                     2500,
                 )
@@ -469,7 +469,7 @@ def run_gui() -> int:
     if "--autostart" in sys.argv:
         window.hide()
         window.tray.showMessage(
-            paths.APP_TITLE, "小鲸在托盘里待命，双击图标打开。", QSystemTrayIcon.MessageIcon.Information, 2500
+            paths.APP_TITLE, "小鲸鱼在托盘里待命，双击图标打开。", QSystemTrayIcon.MessageIcon.Information, 2500
         )
     return app.exec()
 

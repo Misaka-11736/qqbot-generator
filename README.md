@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon-256.png" width="128" alt="小鲸">
+  <img src="assets/icon-256.png" width="128" alt="小鲸鱼">
 </p>
 
 <h1 align="center">QQ Bot生成器</h1>
@@ -171,7 +171,7 @@ powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1
 - [NapCatQQ](https://github.com/NapNeko/NapCatQQ)：QQ NT 加载器与 OneBot 实现（MIT）；
 - [OneBot 11](https://github.com/botuniverse/onebot-11)：机器人协议标准；
 - [Qt for Python](https://doc.qt.io/qtforpython/)：界面框架（LGPL）；
-- 角色立绘「小鲸」由项目作者提供，**不随本项目的 MIT 许可授权**；没有素材时程序会退化为蓝底「鲸」字圆。
+- 角色立绘「小鲸鱼」由项目作者提供，**不随本项目的 MIT 许可授权**；没有素材时程序会退化为蓝底「鲸」字圆。
 
 ## License
 

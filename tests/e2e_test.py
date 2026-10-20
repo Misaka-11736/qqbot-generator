@@ -85,7 +85,7 @@ class FakeNapCat:
         params = data.get("params") or {}
         if action == "get_login_info":
             self.ready.set()
-            await self._respond(echo, {"user_id": BOT_QQ, "nickname": "小鲸"})
+            await self._respond(echo, {"user_id": BOT_QQ, "nickname": "小鲸鱼"})
         elif action in ("send_private_msg", "send_group_msg", "send_msg"):
             self._counter += 1
             self.replies.append(
@@ -202,7 +202,7 @@ class FakeNapCatClient(FakeNapCat):
 def write_config(path: Path, port: int, mode: str, data_dir: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        f'''bot_name = "小鲸"
+        f'''bot_name = "小鲸鱼"
 admin_qq = [10001]
 data_dir = "{data_dir.as_posix()}"
 
@@ -343,7 +343,7 @@ async def run(modes: list[str]) -> int:
                 print(f"       实际：{got}")
             else:
                 print(f"[{label}] 你：{sent}")
-                print(f"       小鲸：{got}")
+                print(f"       小鲸鱼：{got}")
         print("-" * 78)
         print("结果：", "通过 ✅" if ok else "失败 ❌")
     print()

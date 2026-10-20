@@ -154,7 +154,7 @@ def _wrap(draw, text: str, font, width: int) -> list[str]:
     return lines or [""]
 
 
-def make_card(text: str, out_dir: Path, title: str = "小鲸卡片") -> Path:
+def make_card(text: str, out_dir: Path, title: str = "小鲸鱼卡片") -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     width = 900
     pad = 48

@@ -98,7 +98,7 @@ def test_persona() -> None:
     prompt = build_system_prompt(
         preset_text="你是{bot_name}",
         persona_label="损友",
-        bot_name="小鲸",
+        bot_name="小鲸鱼",
         iq=20,
         user_name="阿伟",
         is_group=True,
@@ -179,7 +179,7 @@ def test_http_llm() -> None:
 def test_text() -> None:
     print("[文本处理]")
     check("去引号", clean_reply("“你好呀”") == "你好呀")
-    check("去角色前缀", clean_reply("小鲸：在的") == "在的")
+    check("去角色前缀", clean_reply("小鲸鱼：在的") == "在的")
     check("去 Markdown", clean_reply("**真的**吗") == "真的吗")
     parts = split_text("第一句话。" * 20, limit=60)
     check("长文本会分段", len(parts) > 1)

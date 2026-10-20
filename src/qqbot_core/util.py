@@ -76,8 +76,8 @@ def clean_reply(text: str) -> str:
     if len(text) >= 2 and text[0] in "“\"'「『" and text[-1] in "”\"'」』":
         text = text[1:-1].strip()
 
-    # 去掉角色名前缀，如 “小鲸：”
-    text = re.sub(r"^\s*(?:小鲸|助手|Bot|bot|AI|我)\s*[：:]\s*", "", text)
+    # 去掉角色名前缀，如 “小鲸鱼：”
+    text = re.sub(r"^\s*(?:小鲸鱼|助手|Bot|bot|AI|我)\s*[：:]\s*", "", text)
 
     # Markdown 痕迹
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)

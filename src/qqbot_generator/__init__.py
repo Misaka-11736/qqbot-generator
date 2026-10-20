@@ -1,4 +1,4 @@
-"""QQ Bot生成器 —— 一条会聊天的小鲸。"""
+"""QQ Bot生成器 —— 一条会聊天的小鲸鱼。"""
 
 from .paths import APP_TITLE, APP_VERSION
 

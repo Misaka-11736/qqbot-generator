@@ -312,7 +312,7 @@ class PersonaPage(BasePage):
         text = self.input.text().strip()
         if not text:
             return
-        self.preview.setText("小鲸正在想…")
+        self.preview.setText("小鲸鱼正在想…")
         worker = _Preview(self.ctx.cfg, self.editor.toPlainText(), self.iq_slider.value(), text)
         worker.signals.done.connect(self._on_preview)
         QThreadPool.globalInstance().start(worker)

@@ -54,7 +54,7 @@ class StatusCard(ClickableCard):
 class HomePage(BasePage):
     key = "home"
     title = "首页"
-    subtitle = "所有开关都在这一页，剩下的交给小鲸"
+    subtitle = "所有开关都在这一页，剩下的交给小鲸鱼"
 
     def build(self) -> None:
         self._build_hero()
@@ -267,7 +267,7 @@ class HomePage(BasePage):
             self.ctx.process.stop()
         else:
             if self.ctx.process.start():
-                self.ctx.toast("小鲸出发了，去 NapCat 页扫码吧")
+                self.ctx.toast("小鲸鱼出发了，去 NapCat 页扫码吧")
         self.on_show()
 
     def _configure_napcat(self) -> None:

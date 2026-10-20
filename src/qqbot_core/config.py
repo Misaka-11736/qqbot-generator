@@ -81,7 +81,7 @@ class LogConfig:
 
 @dataclass
 class Config:
-    bot_name: str = "小鲸"
+    bot_name: str = "小鲸鱼"
     admin_qq: list[int] = field(default_factory=list)
     onebot: OneBotConfig = field(default_factory=OneBotConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)

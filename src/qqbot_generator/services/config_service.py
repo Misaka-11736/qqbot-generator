@@ -22,7 +22,7 @@ class ConfigService:
         self._seed_prompts()
         if not self.path.is_file():
             cfg = Config()
-            cfg.bot_name = "小鲸"
+            cfg.bot_name = "小鲸鱼"
             self._normalize(cfg)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(cfg.toml_dump(), "utf-8")

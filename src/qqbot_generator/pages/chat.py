@@ -34,7 +34,7 @@ class Bubble(QWidget):
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(14, 9, 14, 10)
         body_layout.setSpacing(2)
-        name = QLabel("你" if mine else "小鲸")
+        name = QLabel("你" if mine else "小鲸鱼")
         name.setObjectName("bubbleNameMine" if mine else "bubbleName")
         body_layout.addWidget(name)
         label = QLabel(text)
@@ -161,7 +161,7 @@ class ChatPage(BasePage):
 
     def _render_history(self) -> None:
         self._clear()
-        self._add("你好，我是小鲸。调低我的智商，我会觉得你顺眼很多。😊", mine=False)
+        self._add("你好，我是小鲸鱼。调低我的智商，我会觉得你顺眼很多。😊", mine=False)
         if self.session is None:
             return
         for item in self.session.history()[-8:]:
@@ -207,7 +207,7 @@ class ChatPage(BasePage):
 
     def _show_typing(self) -> None:
         self._hide_typing()
-        self._typing = QLabel("小鲸正在想…")
+        self._typing = QLabel("小鲸鱼正在想…")
         self._typing.setStyleSheet(f"color:{COLORS['muted']}; font-size:12px; padding-left:46px;")
         self.messages.insertWidget(self.messages.count() - 1, self._typing)
         self.send_button.setEnabled(False)

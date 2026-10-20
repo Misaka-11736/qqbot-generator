@@ -51,7 +51,7 @@ class AboutPage(BasePage):
         text.addWidget(version)
         desc = QLabel(
             "把小号 QQ 变成你的 AI 搭子：有人格、有记忆、能被你调智商。\n"
-            "住在界面里的蓝鲸女仆叫「小鲸」，界面配色参考她的海军蓝与蕾丝白。"
+            "住在界面里的蓝鲸女仆叫「小鲸鱼」，界面配色参考她的海军蓝与蕾丝白。"
         )
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color:{COLORS['ink2']}; font-size:13px; line-height:160%;")

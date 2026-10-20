@@ -59,7 +59,7 @@ class BotPage(BasePage):
         row.setHorizontalSpacing(16)
         row.setVerticalSpacing(14)
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("小鲸")
+        self.name_edit.setPlaceholderText("小鲸鱼")
         row.addWidget(Field("机器人名字", self.name_edit, "会出现在它自称和提示词里"), 0, 0)
 
         self.admin_edit = QLineEdit()

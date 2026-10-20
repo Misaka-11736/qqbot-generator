@@ -49,12 +49,12 @@ def check_prompt_build() -> tuple[bool, str]:
     prompt = build_system_prompt(
         preset_text=load_preset("snark"),
         persona_label=PRESETS["snark"],
-        bot_name="小鲸",
+        bot_name="小鲸鱼",
         iq=20,
         user_name="测试",
         is_group=False,
     )
-    ok = "降智模式" in prompt and "小鲸" in prompt and len(prompt) > 100
+    ok = "降智模式" in prompt and "小鲸鱼" in prompt and len(prompt) > 100
     return ok, f"{len(prompt)} 字" if ok else "提示词构建异常"
 
 
