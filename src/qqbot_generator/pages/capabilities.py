@@ -202,6 +202,7 @@ class CapabilitiesPage(BasePage):
         self.test_result.setObjectName("hint")
         style.add(self.test_result)
         self.add(style)
+        style.hide()  # 已迁移到人格页
 
         use = Card()
         title = QLabel("怎么用")
@@ -265,15 +266,8 @@ class CapabilitiesPage(BasePage):
         f.search_daily_limit = self.search_limit.value()
         f.download_max_mb = self.download_limit.value()
         f.summary_max = self.summary_limit.value()
-        f.tone = self.tone_slider.value()
-        f.verbosity = self.verbosity_slider.value()
-        f.emoji = self.emoji_slider.value()
-        f.catchphrase = self.phrase_edit.text().strip()
-        f.reply_format = self.format_combo.currentData()
+        # 表达风格已迁移到人格页保存
         f.vision_model = self.model_combo.currentText()
-        f.search_threshold = self.search_thr.value()
-        f.image_threshold = self.image_thr.value()
-        f.voice_threshold = self.voice_thr.value()
         f.voice_model = self.voice_combo.currentText()
         f.voice_name = self.voice_name.text().strip() or "zh-CN-XiaoxiaoNeural"
         f.auto_search = self.auto_check.isChecked()

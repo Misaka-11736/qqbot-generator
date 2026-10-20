@@ -8,12 +8,14 @@ from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QSpinBox,
     QWidget,
 )
 
@@ -84,6 +86,8 @@ class PersonaPage(BasePage):
         self._build_top()
         self._build_editor()
         self._build_address()
+        self._build_style()
+        self._build_chat()
         self._build_preview()
         self.load()
 
@@ -229,6 +233,66 @@ class PersonaPage(BasePage):
         self.freq_label.setText(f"{self.freq_slider.value()}%")
         self.add(card)
 
+    def _build_style(self) -> None:
+        card = Card()
+        title = QLabel("表达风格")
+        title.setObjectName("cardTitle")
+        card.add(title)
+        card.add(_hint("这套风格属于当前人格卡，切换人格会一起切换。"))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        self.tone_slider = WheelSlider(Qt.Orientation.Horizontal)
+        self.tone_slider.setRange(0, 100)
+        self.verbosity_slider = WheelSlider(Qt.Orientation.Horizontal)
+        self.verbosity_slider.setRange(0, 100)
+        self.emoji_slider = WheelSlider(Qt.Orientation.Horizontal)
+        self.emoji_slider.setRange(0, 100)
+        grid.addWidget(QLabel("毒舌 ←→ 温柔"), 0, 0); grid.addWidget(self.tone_slider, 0, 1)
+        grid.addWidget(QLabel("简短 ←→ 详细"), 0, 2); grid.addWidget(self.verbosity_slider, 0, 3)
+        grid.addWidget(QLabel("少用表情 ←→ 多用"), 1, 0); grid.addWidget(self.emoji_slider, 1, 1)
+        self.phrase_edit = QLineEdit()
+        self.phrase_edit.setPlaceholderText("口头禅，可留空")
+        grid.addWidget(QLabel("口头禅"), 1, 2); grid.addWidget(self.phrase_edit, 1, 3)
+        self.format_combo = QComboBox()
+        for label, value in (("自动（按语义）", "auto"), ("总是文字", "text"), ("总是图片", "image"), ("总是语音", "voice")):
+            self.format_combo.addItem(label, value)
+        grid.addWidget(QLabel("回复形式"), 2, 0); grid.addWidget(self.format_combo, 2, 1)
+        self.image_thr = WheelSlider(Qt.Orientation.Horizontal); self.image_thr.setRange(0, 100)
+        self.voice_thr = WheelSlider(Qt.Orientation.Horizontal); self.voice_thr.setRange(0, 100)
+        self.search_thr = WheelSlider(Qt.Orientation.Horizontal); self.search_thr.setRange(0, 100)
+        grid.addWidget(QLabel("图片门槛"), 2, 2); grid.addWidget(self.image_thr, 2, 3)
+        grid.addWidget(QLabel("语音门槛"), 3, 0); grid.addWidget(self.voice_thr, 3, 1)
+        grid.addWidget(QLabel("搜索门槛"), 3, 2); grid.addWidget(self.search_thr, 3, 3)
+        card.add_layout(grid)
+        self.add(card)
+
+    def _build_chat(self) -> None:
+        card = Card()
+        title = QLabel("聊天行为")
+        title.setObjectName("cardTitle")
+        card.add(title)
+        card.add(_hint("控制它多爱说话、记得多少、多久回一次。"))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        self.prob_slider = WheelSlider(Qt.Orientation.Horizontal); self.prob_slider.setRange(0, 100)
+        self.prob_label = QLabel("6%")
+        grid.addWidget(QLabel("群里主动搭话概率"), 0, 0); grid.addWidget(self.prob_slider, 0, 1); grid.addWidget(self.prob_label, 0, 2)
+        self.cooldown_spin = QSpinBox(); self.cooldown_spin.setRange(0, 3600); self.cooldown_spin.setSuffix(" 秒")
+        grid.addWidget(QLabel("搭话冷却"), 0, 3); grid.addWidget(self.cooldown_spin, 0, 4)
+        self.turns_spin = QSpinBox(); self.turns_spin.setRange(1, 40); self.turns_spin.setSuffix(" 轮")
+        grid.addWidget(QLabel("上下文轮数"), 1, 0); grid.addWidget(self.turns_spin, 1, 1)
+        self.rate_spin = QSpinBox(); self.rate_spin.setRange(1, 100); self.rate_spin.setSuffix(" 次/分")
+        grid.addWidget(QLabel("每人限流"), 1, 3); grid.addWidget(self.rate_spin, 1, 4)
+        self.chars_spin = QSpinBox(); self.chars_spin.setRange(60, 2000); self.chars_spin.setSuffix(" 字")
+        grid.addWidget(QLabel("单条最长"), 2, 0); grid.addWidget(self.chars_spin, 2, 1)
+        self.delay_check = QCheckBox("模拟打字延迟")
+        self.quote_check = QCheckBox("回复时引用原消息")
+        grid.addWidget(self.delay_check, 2, 3); grid.addWidget(self.quote_check, 2, 4)
+        card.add_layout(grid)
+        self.add(card)
+        self.prob_slider.valueChanged.connect(self.freq_slider.setValue)
+        self.freq_slider.valueChanged.connect(self.prob_slider.setValue)
+
     def _build_preview(self) -> None:
         card = Card(soft=True)
         row = QHBoxLayout()
@@ -269,6 +333,17 @@ class PersonaPage(BasePage):
         self.address_check.setChecked(self.ctx.cfg.chat.address_awareness)
         self.join_slider.setValue(self.ctx.cfg.chat.address_threshold)
         self.freq_slider.setValue(int(self.ctx.cfg.chat.group_chat_probability * 100))
+        f = self.ctx.cfg.features
+        self.tone_slider.setValue(f.tone); self.verbosity_slider.setValue(f.verbosity); self.emoji_slider.setValue(f.emoji)
+        self.phrase_edit.setText(f.catchphrase)
+        idx = self.format_combo.findData(f.reply_format); self.format_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.image_thr.setValue(f.image_threshold); self.voice_thr.setValue(f.voice_threshold); self.search_thr.setValue(f.search_threshold)
+        c = self.ctx.cfg.chat
+        self.prob_slider.setValue(int(c.group_chat_probability * 100)); self.prob_label.setText(f"{int(c.group_chat_probability * 100)}%")
+        self.prob_slider.valueChanged.connect(lambda v: self.prob_label.setText(f"{v}%"))
+        self.cooldown_spin.setValue(int(c.group_cooldown)); self.turns_spin.setValue(c.context_turns)
+        self.rate_spin.setValue(c.rate_limit_per_minute); self.chars_spin.setValue(c.max_reply_chars)
+        self.delay_check.setChecked(c.reply_delay); self.quote_check.setChecked(c.quote_reply)
         self.iq_slider.setValue(self.ctx.cfg.persona.default_iq)
         self._select(self.ctx.cfg.persona.preset, load_text=True)
         self.load_iq()
@@ -288,6 +363,14 @@ class PersonaPage(BasePage):
         self.preset_buttons[key].setChecked(True)
         slot = self._slot()
         self.iq_slider.setValue(int(slot.get("iq", 100)))
+        if hasattr(self, "tone_slider"):
+            self.tone_slider.setValue(int(slot.get("tone", 50)))
+            self.verbosity_slider.setValue(int(slot.get("verbosity", 50)))
+            self.emoji_slider.setValue(int(slot.get("emoji", 50)))
+            self.phrase_edit.setText(str(slot.get("catchphrase", "")))
+            idx = self.format_combo.findData(str(slot.get("reply_format", "auto")))
+            self.format_combo.setCurrentIndex(idx if idx >= 0 else 0)
+            self.join_slider.setValue(int(slot.get("address_threshold", 50)))
         if load_text:
             self.editor.setPlainText(load_preset(key))
             self.file_hint.setText(f"{key}.md")
@@ -313,9 +396,24 @@ class PersonaPage(BasePage):
         slot = self._slot()
         slot["iq"] = self.iq_slider.value()
         slot["preset"] = self.current
+        slot["tone"] = self.tone_slider.value()
+        slot["verbosity"] = self.verbosity_slider.value()
+        slot["emoji"] = self.emoji_slider.value()
+        slot["catchphrase"] = self.phrase_edit.text().strip()
+        slot["reply_format"] = self.format_combo.currentData()
+        slot["address_threshold"] = self.join_slider.value()
         self.ctx.cfg.chat.address_awareness = self.address_check.isChecked()
         self.ctx.cfg.chat.address_threshold = self.join_slider.value()
-        self.ctx.cfg.chat.group_chat_probability = self.freq_slider.value() / 100
+        self.ctx.cfg.chat.group_chat_probability = self.prob_slider.value() / 100
+        f = self.ctx.cfg.features
+        f.tone = self.tone_slider.value(); f.verbosity = self.verbosity_slider.value(); f.emoji = self.emoji_slider.value()
+        f.catchphrase = self.phrase_edit.text().strip()
+        f.reply_format = self.format_combo.currentData()
+        f.image_threshold = self.image_thr.value(); f.voice_threshold = self.voice_thr.value(); f.search_threshold = self.search_thr.value()
+        c = self.ctx.cfg.chat
+        c.group_cooldown = self.cooldown_spin.value(); c.context_turns = self.turns_spin.value()
+        c.rate_limit_per_minute = self.rate_spin.value(); c.max_reply_chars = self.chars_spin.value()
+        c.reply_delay = self.delay_check.isChecked(); c.quote_reply = self.quote_check.isChecked()
         self.ctx.save_config()
         self.ctx.toast("人格已保存，新消息立即生效")
 

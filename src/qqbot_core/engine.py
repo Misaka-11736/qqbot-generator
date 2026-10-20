@@ -679,6 +679,9 @@ class Engine:
 
         async with lock:
             messages = self._build_messages(incoming, text, iq, preset)
+            plan = await self._plan_reply(incoming, text)
+            if plan:
+                messages[0]["content"] += f"\n【这一轮怎么接】{plan}"
             temperature, max_tokens, max_chars = style_of(iq)
             # 说话越少脑子越笨，温度再抬一点，制造“不靠谱”感
             if iq <= 30:
@@ -700,6 +703,7 @@ class Engine:
                 raw = random.choice(FALLBACK_LINES)
 
         reply = clean_reply(raw)
+        reply = self._de_assistant(reply)
         if not reply:
             return
         if len(reply) > max_chars:
@@ -748,6 +752,30 @@ class Engine:
             iq,
             ("".join(parts))[:60].replace("\n", " "),
         )
+
+    async def _plan_reply(self, incoming: Incoming, text: str) -> str:
+        history = self.memory.history(incoming.conversation_key)[-4:]
+        last = next((h.get("text", "") for h in reversed(history) if h.get("role") == "assistant"), "")
+        try:
+            plan = await self.llm.complete(
+                [
+                    {
+                        "role": "system",
+                        "content": "用不超过 12 个字说这一轮该怎么接：接梗/反驳/关心/敷衍/提问/顺着聊。只输出这几个词之一加半句理由。",
+                    },
+                    {"role": "user", "content": f"我上一句：{last}\n对方：{text}"},
+                ],
+                temperature=0.2,
+                max_tokens=30,
+            )
+            return plan.strip()[:40]
+        except Exception:
+            return ""
+
+    def _de_assistant(self, text: str) -> str:
+        text = re.sub(r"^(首先|其次|总之|总的来说|希望对你有帮助)[，,：:\s]*", "", text)
+        text = text.replace("作为AI", "我").replace("作为 AI", "我")
+        return text.strip()
 
     def _build_messages(self, incoming: Incoming, text: str, iq: int, preset: str) -> list[dict[str, str]]:
         preset_text = load_preset(preset)

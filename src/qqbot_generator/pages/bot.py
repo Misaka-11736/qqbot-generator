@@ -191,6 +191,7 @@ class BotPage(BasePage):
         row.addWidget(Field("小动作", toggles), 2, 1)
         card.add_layout(row)
         self.add(card)
+        card.hide()  # 已迁移到人格页
 
     # ---------- 底部 ----------
 
@@ -262,13 +263,7 @@ class BotPage(BasePage):
         cfg.onebot.port = self.port_spin.value()
         cfg.onebot.path = self.path_edit.text().strip() or "/onebot/v11/ws"
         cfg.onebot.access_token = self.token_edit.text()
-        cfg.chat.group_chat_probability = self.prob_slider.value() / 100.0
-        cfg.chat.group_cooldown = float(self.cooldown_spin.value())
-        cfg.chat.context_turns = self.turns_spin.value()
-        cfg.chat.rate_limit_per_minute = self.rate_spin.value()
-        cfg.chat.max_reply_chars = self.chars_spin.value()
-        cfg.chat.reply_delay = self.delay_check.isChecked()
-        cfg.chat.quote_reply = self.quote_check.isChecked()
+        # 聊天行为已迁移到人格页保存
         cfg.chat.enable_private = self.private_check.isChecked()
         cfg.chat.enable_group = self.group_check.isChecked()
         cfg.chat.group_scope = self.scope_combo.currentData()
