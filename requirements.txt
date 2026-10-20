@@ -1,3 +1,7 @@
-# 运行时依赖
 PySide6>=6.6
 websockets>=14.0
+pillow>=10.0
+qrcode>=7.4
+numpy>=1.26
+faster-whisper>=1.0
+edge-tts>=6.1

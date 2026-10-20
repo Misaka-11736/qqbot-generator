@@ -244,10 +244,10 @@ keep_days = 7
 
 STEPS = [
     ("私聊", "在吗", dict(group=False), ""),
-    ("私聊", "/智商 20", dict(group=False), "智商已调到 20"),
+    ("私聊", "/reset", dict(group=False), "已重置"),
     ("私聊", "我在设置里给你智商调低了", dict(group=False), "顺眼"),
     ("群聊@", "你好", dict(group=True, at_bot=True), ""),
-    ("群聊指令", "/智商", dict(group=True, at_bot=True), "当前智商"),
+    ("群聊指令", "/reset", dict(group=True, at_bot=True), "已重置"),
 ]
 
 
