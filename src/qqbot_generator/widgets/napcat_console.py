@@ -13,6 +13,7 @@ from PySide6.QtCore import QThread, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWebSockets import QWebSocket
 from PySide6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -85,7 +86,7 @@ class NapCatConsole(Card):
         auth.setSpacing(8)
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password.setPlaceholderText("WebUI Token / 密码（通常在 webui.json，不是 QQ 密码）")
+        self.password.setPlaceholderText("WebUI Token / 密码（可自动填入，不是 QQ 密码）")
         saved = secrets.unprotect(self.ui.get("napcat_webui_pwd"))
         if saved:
             self.password.setText(saved)
@@ -94,6 +95,22 @@ class NapCatConsole(Card):
         self.connect_button.clicked.connect(self._connect)
         auth.addWidget(self.connect_button)
         self.add_layout(auth)
+        self.token_hint = QLabel("")
+        self.token_hint.setObjectName("cardHint")
+        self.token_hint.setWordWrap(True)
+        self.token_hint.setText("同一台电脑会自动读取 webui.json；NapCat 在另一台机器时，请填那台机器的 token。")
+        self.add(self.token_hint)
+        recover = QHBoxLayout()
+        self.choose_button = small_button("选择 NapCat 目录", "secondary")
+        self.choose_button.clicked.connect(self._choose_folder)
+        self.webui_button = small_button("打开 WebUI", "secondary")
+        self.webui_button.clicked.connect(self._open_webui)
+        recover.addWidget(self.choose_button)
+        recover.addWidget(self.webui_button)
+        recover.addStretch(1)
+        self.add_layout(recover)
+        self.choose_button.hide()
+        self.webui_button.hide()
 
         self.tabs = QHBoxLayout()
         self.tabs.setSpacing(6)
@@ -118,6 +135,7 @@ class NapCatConsole(Card):
         self.timer.setInterval(2500)
         self.timer.timeout.connect(self._poll)
         self.ctx.signals.config_changed.connect(self._show_tab)
+        self.autofill()
 
     # ---------- 界面 ----------
 
@@ -181,6 +199,43 @@ class NapCatConsole(Card):
         if index == 1:
             self._refresh_qr()
 
+    def _folder(self):
+        saved = self.ui.get("napcat_dir")
+        found = napcat.find_candidates([saved] if saved else None)
+        return found[0] if found else None
+
+    def autofill(self) -> None:
+        folder = self._folder()
+        if folder is None:
+            self.token_hint.setText("还没找到 NapCat 目录；可以点「选择 NapCat 目录」，或手动填 Token。")
+            self.choose_button.show()
+            self.webui_button.show()
+            return
+        token = napcat.read_webui_token(folder)
+        if token and not self.password.text().strip():
+            self.password.setText(token)
+        if token and self.password.text().strip() == token:
+            self.token_hint.setText(f"已从 {folder}\\config\\webui.json 自动填入 Token。")
+        elif token:
+            self.token_hint.setText("自动检测到 webui.json；输入框里已有内容，保留你填的 Token。")
+        else:
+            self.token_hint.setText("找到了 NapCat 目录，但没有 webui.json；先启动一次 NapCat 初始化。")
+            self.choose_button.show()
+            self.webui_button.show()
+
+    def _choose_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "选择 NapCat 目录", str(self._folder() or "D:/"))
+        if not folder:
+            return
+        self.ui.set("napcat_dir", folder)
+        self.password.clear()
+        self.autofill()
+
+    def _open_webui(self) -> None:
+        import webbrowser
+
+        webbrowser.open("http://127.0.0.1:6099/webui/")
+
     def _connect(self) -> None:
         password = self.password.text().strip()
         candidates = [password] if password else []
@@ -211,6 +266,8 @@ class NapCatConsole(Card):
             return
         self.client = client
         self.ui.set("napcat_webui_pwd", secrets.protect(used))
+        self.choose_button.hide()
+        self.webui_button.hide()
         self._set_state("已连接 · 登录成功", "ok")
         mark_refreshed(self.state, "已连接 · 登录成功")
         if password and used != password:

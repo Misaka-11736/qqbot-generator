@@ -183,6 +183,7 @@ class NapCatPage(BasePage):
             found = napcat.find_candidates([saved])
             if found:
                 self.path_edit.setText(str(found[0]))
+        self.console.autofill()
         self._refresh()
 
     def _refresh(self) -> None:
