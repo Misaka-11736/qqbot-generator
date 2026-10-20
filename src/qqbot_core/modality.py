@@ -36,7 +36,7 @@ def choose_modality(user_text: str, voice_threshold: int = 50, image_threshold: 
     if any(word in text for word in FILE_HINTS):
         return "file"
     image_score = 0
-    if re.search(r"(发|来|给|整|画|找)(张|个|只|条|幅)", text):
+    if re.search(r"(发|来|给|整|画|找|搜|要)(张|个|只|条|幅)", text):
         image_score = 85
     elif re.search(r"(发|来|给|整|画|找).{0,6}(图|照片|图片|表情包)", text) or re.search(r"(长什么样|长啥样|什么样子|啥样子)", text):
         image_score = 90

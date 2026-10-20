@@ -47,6 +47,8 @@ def _public_url(url: str) -> str:
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ToolError("只支持 http/https 链接")
     host = parsed.hostname
+    if host == "imgs.search.brave.com" or host.endswith(".brave.com"):
+        return urllib.parse.urlunparse(parsed)
     try:
         infos = socket.getaddrinfo(host, None)
     except OSError as exc:

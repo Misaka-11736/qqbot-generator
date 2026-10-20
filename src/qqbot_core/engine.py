@@ -274,6 +274,13 @@ class Engine:
     async def _natural_intent(self, text: str, incoming: Incoming) -> bool:
         """不用 / 指令：直接说“搜一下…”也能触发。"""
         compact = text.strip()
+        if self.features.vision and choose_modality(compact, self.features.voice_threshold, self.features.image_threshold) == "image":
+            try:
+                path = await self._image_for(compact, "给你找的")
+                await self._send_media(incoming, "image", str(path), caption="搜到一张")
+                return True
+            except ToolError as exc:
+                log.info("图片任务没找到图：%s", exc)
         if await self._compound_tasks(compact, incoming):
             return True
         query = search_query(compact, self.features.search_threshold)
@@ -531,14 +538,20 @@ class Engine:
         query = str(data.get("query") or "").strip()
         if not query:
             query = re.sub(
-                r"^(能不能|可以|帮我|给我|麻烦)?\s*(发张|发个|来张|来个|整张|画一个|画个|看看|瞧瞧|找张|找张图)",
+                r"^(能不能|可以|帮我|给我|麻烦)?\s*(搜张|搜个|找张|找张图|发张|发个|来张|来个|整张|画一个|画个|看看|瞧瞧)",
                 "",
                 user_text,
             )
             query = re.sub(r"(长什么样|长啥样|什么样子|啥样子|图片|照片|表情包|图)$", "", query).strip(" 的：:，,")
+        query = re.sub(r"(发来|发给我|给我|看看|一下|呗|吧|啊)$", "", query).strip(" 的：:，,")
         if not query:
             raise ToolError("没提取到图片主体")
         url = await asyncio.to_thread(brave_image, key, query)
+        if not url:
+            simple = re.sub(r"(发来|发给我|给我|看看|一下|呗|吧|啊).*$", "", user_text)
+            simple = re.sub(r"^(搜张|搜个|找张|来张|发张|给张|整张)", "", simple).strip(" 的：:，,")
+            if simple and simple != query:
+                url = await asyncio.to_thread(brave_image, key, simple)
         if not url:
             raise ToolError("没搜到合适的图")
         path = await asyncio.to_thread(download, url, self.cfg.data_dir / "cache" / "images", 8)
