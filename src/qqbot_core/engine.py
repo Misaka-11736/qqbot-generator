@@ -170,6 +170,8 @@ class Engine:
             return
         if incoming.user_id in self.cfg.chat.ignore_qq:
             return
+        if not self._in_scope(incoming):
+            return
         if incoming.message_id and incoming.message_id in self._seen_set:
             return
         self._remember_seen(incoming.message_id)
@@ -776,6 +778,19 @@ class Engine:
             await self._deliver(incoming, text)
 
     # ---------------- 判定 ----------------
+
+    def _in_scope(self, incoming: Incoming) -> bool:
+        cfg = self.cfg
+        if not incoming.is_group:
+            return cfg.chat.enable_private
+        if not cfg.chat.enable_group:
+            return False
+        scope = cfg.chat.group_scope
+        if scope == "whitelist" and incoming.group_id not in cfg.chat.group_list:
+            return False
+        if scope == "blacklist" and incoming.group_id in cfg.chat.group_list:
+            return False
+        return True
 
     def _should_reply(self, incoming: Incoming, text: str) -> bool:
         key = incoming.conversation_key
