@@ -38,7 +38,7 @@ if (Test-Path $built) {
 }
 
 Write-Host "==> NSIS 编译安装包" -ForegroundColor Cyan
-& $makensis (Join-Path $Root "installer\qqbot-generator.nsi")
+& $makensis /INPUTCHARSET UTF8 (Join-Path $Root "installer\qqbot-generator.nsi")
 if ($LASTEXITCODE -ne 0) { throw "makensis 失败" }
 
 Write-Host "`n完成：" -ForegroundColor Green
