@@ -30,12 +30,19 @@ $headers = @{
     Accept                 = "application/vnd.github+json"
 }
 
-$release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -Headers $headers -TimeoutSec 30
+$releaseFile = "$env:TEMP\gh-release.json"
+$relStatus = curl.exe -sS --max-time 60 -o $releaseFile -w "%{http_code}" `
+    -H "Authorization: Bearer $token" -H "User-Agent: qqbot-release-uploader" `
+    "https://api.github.com/repos/$Repo/releases/tags/$Tag"
+if ($relStatus -ne "200") { throw "找不到 Release $Tag（HTTP $relStatus）" }
+$release = Get-Content $releaseFile -Raw -Encoding utf8 | ConvertFrom-Json
 $uploadUrl = ($release.upload_url -replace "\{.*$", "") + "?name=" + [uri]::EscapeDataString($AssetName)
 $existing = @($release.assets) | Where-Object { $_.name -eq $AssetName }
 if ($existing) {
     Write-Host "资产已存在，先删除旧文件：$AssetName"
-    Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/$Repo/releases/assets/$($existing.id)" -Headers $headers -TimeoutSec 30 | Out-Null
+    curl.exe -sS --max-time 60 -X DELETE `
+        -H "Authorization: Bearer $token" -H "User-Agent: qqbot-release-uploader" `
+        "https://api.github.com/repos/$Repo/releases/assets/$($existing.id)" -o NUL
 }
 
 Write-Host "上传 $AssetName 到 $Tag ..."
