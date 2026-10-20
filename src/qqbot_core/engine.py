@@ -70,6 +70,7 @@ class Engine:
         self.last_replies: list[str] = []
         self._auto_task: asyncio.Task | None = None
         self._cache_task: asyncio.Task | None = None
+        self._last_tasks: dict[str, dict] = {}
         self._search_day = ""
         self._search_used = 0
         self.features = cfg.features
@@ -281,19 +282,33 @@ class Engine:
         """不用 / 指令：直接说“搜一下…”也能触发。"""
         compact = text.strip()
         plan = parse_semantic(compact)
-        if plan.query and (plan.modality == "image" or (plan.action == "search" and plan.measure)):
+        if plan.action == "search" or plan.measure:
             log.info("语义分割：%s", describe_plan(plan))
-            try:
-                path = await self._image_for(plan.query, "给你找的", direct=True)
-                await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{plan.query}")
-            except ToolError as exc:
-                log.info("图片任务失败：%s", exc)
-                await self._deliver(incoming, f"没找到合适的图：{exc}")
-            return True
-        if plan.action == "search" and plan.query and self.features.search:
-            log.info("语义分割：%s", describe_plan(plan))
-            await self._deliver(incoming, "我去网上看看…")
-            await self._deliver(incoming, await self._search(plan.query))
+            context = self._last_tasks.get(incoming.conversation_key, {})
+            query = plan.query or str(context.get("query") or "")
+            if plan.normalized:
+                log.info("错别字归一：%s → %s", plan.raw, plan.normalized)
+            if not query:
+                await self._deliver(incoming, "搜什么？给我个词。")
+                return True
+            if context and not plan.query:
+                log.info("上下文补全：%s", query)
+            image_task = plan.modality == "image" or bool(plan.measure)
+            self._last_tasks[incoming.conversation_key] = {
+                "query": query,
+                "modality": "image" if image_task else plan.modality,
+            }
+            if image_task and self.features.vision:
+                try:
+                    path = await self._image_for(query, "给你找的", direct=True)
+                    await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
+                except ToolError as exc:
+                    log.info("图片任务失败：%s", exc)
+                    await self._deliver(incoming, f"没找到合适的图：{exc}")
+                return True
+            if self.features.search:
+                await self._deliver(incoming, "我去网上看看…")
+                await self._deliver(incoming, await self._search(query))
             return True
         if self.features.vision and choose_modality(compact, self.features.voice_threshold, self.features.image_threshold) == "image":
             try:

@@ -23,6 +23,7 @@ SEND_WORDS = ("发来", "发给我", "发我", "发到", "发在", "发群里", 
 @dataclass
 class SemanticPlan:
     action: str = ""
+    normalized: str = ""
     measure: str = ""
     query: str = ""
     modality: str = "text"
@@ -32,7 +33,12 @@ class SemanticPlan:
 
 def parse(text: str) -> SemanticPlan:
     raw = (text or "").strip()
-    plan = SemanticPlan(raw=raw)
+    original = raw
+    raw = re.sub(r"^在(?=(搜|查|找|发|来|整|看|画))", "再", raw)
+    raw = re.sub(r"^(再|又|还|继续|接着)\s*", "", raw)
+    plan = SemanticPlan(raw=original)
+    if raw != original:
+        plan.normalized = raw
     if not raw:
         return plan
 
@@ -45,7 +51,7 @@ def parse(text: str) -> SemanticPlan:
     if any(word in raw for word in SEND_WORDS) or raw.startswith(("来", "发")):
         plan.send = True
 
-    match = re.search(r"(张图|个图|张|幅|段|个视频|份|个文件)", raw)
+    match = re.search(r"(一张|两张|几张|张图|个图|张|幅|段|个视频|份|个文件)", raw)
     if match:
         plan.measure = match.group(1)
         plan.modality = MEASURE_MODALITY.get(plan.measure, "image" if "图" in plan.measure else "text")
@@ -54,6 +60,7 @@ def parse(text: str) -> SemanticPlan:
     for word in SEND_WORDS:
         raw = raw.replace(word, "")
     raw = re.sub(r"^(帮我|给我|替我|麻烦|请|随便|随意|随便来|来|发|整|要)+", "", raw)
+    raw = re.sub(r"^(一|两|几)", "", raw)
     raw = re.sub(r"(一下|一张|一个|一条|一段|吧|呗|啊|呀|看看|瞧瞧)+$", "", raw)
     raw = raw.strip(" 的：:，,。！!？?")
     plan.query = raw
