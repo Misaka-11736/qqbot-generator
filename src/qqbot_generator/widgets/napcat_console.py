@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import base64
 import re
+import socket
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import QThread, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWebSockets import QWebSocket
 from PySide6.QtWidgets import (
@@ -20,13 +21,40 @@ from PySide6.QtWidgets import (
 )
 
 from ..context import AppContext
-from ..services import secrets
+from ..services import napcat, secrets
 from ..services.napcat_webui import NapCatWebUI, WebUIError
 from ..services.ui_settings import UiSettings
 from ..theme import COLORS
 from ..widgets.common import Card, small_button
+from ..widgets.loading import BusyButton, mark_refreshed
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07")
+
+
+class _LoginWorker(QThread):
+    done = Signal(object, str, str)
+
+    def __init__(self, candidates: list[str]):
+        super().__init__()
+        self.candidates = candidates
+
+    def run(self) -> None:
+        try:
+            with socket.create_connection(("127.0.0.1", 6099), timeout=1.2):
+                pass
+        except OSError:
+            self.done.emit(None, "", "连不上 127.0.0.1:6099：NapCat WebUI 没启动")
+            return
+        last = ""
+        for candidate in self.candidates:
+            client = NapCatWebUI()
+            try:
+                client.login(candidate)
+                self.done.emit(client, candidate, "")
+                return
+            except WebUIError as exc:
+                last = str(exc)
+        self.done.emit(None, "", last or "登录失败")
 
 
 class NapCatConsole(Card):
@@ -59,7 +87,7 @@ class NapCatConsole(Card):
         if saved:
             self.password.setText(saved)
         auth.addWidget(self.password, 1)
-        self.connect_button = small_button("连接", "primary")
+        self.connect_button = BusyButton("连接", "primary")
         self.connect_button.clicked.connect(self._connect)
         auth.addWidget(self.connect_button)
         self.add_layout(auth)
@@ -163,25 +191,25 @@ class NapCatConsole(Card):
         if not candidates:
             self._set_state("先填 WebUI Token", "warn")
             return
-        self._set_state("正在登录 NapCat WebUI…", "info")
-        used = ""
-        last_error = ""
-        for candidate in candidates:
-            try:
-                self.client.login(candidate)
-                used = candidate
-                break
-            except WebUIError as exc:
-                last_error = str(exc)
-        if not used:
-            self._set_state(f"登录失败：{last_error}", "error")
+        self.connect_button.start_busy("连接中…")
+        self._set_state("正在连接 127.0.0.1:6099…", "info")
+        self._login_worker = _LoginWorker(candidates)
+        self._login_worker.done.connect(lambda client, used, err: self._on_login(client, used, err, password))
+        self._login_worker.start()
+
+    def _on_login(self, client, used: str, error: str, password: str) -> None:
+        self.connect_button.stop_busy()
+        if client is None:
+            self._set_state(f"连接失败：{error}", "error")
             self.login_state.setText(
-                "提示：这里要填 webui.json 里的 token（默认 qqbot-local-2026），不是 QQ 密码。"
-                "如果改过密码，填新密码；忘了就删掉 webui.json 重启 NapCat。"
+                "检查：NapCat 是否在运行、6099 是否被占用；这里填 webui.json 的 token（默认 qqbot-local-2026），不是 QQ 密码。"
             )
+            self.ctx.toast(f"NapCat 连接失败：{error}")
             return
+        self.client = client
         self.ui.set("napcat_webui_pwd", secrets.protect(used))
-        self._set_state("已登录，正在开终端…", "ok")
+        self._set_state("已连接 · 登录成功", "ok")
+        mark_refreshed(self.state, "已连接 · 登录成功")
         if password and used != password:
             self.ctx.toast("已自动使用 webui.json 里的 Token 登录")
         self.password.clear()
