@@ -7,12 +7,13 @@ import asyncio
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
-    QSlider,
     QWidget,
 )
 
@@ -26,7 +27,7 @@ from qqbot_core.persona import (
 
 from .. import paths
 from ..theme import COLORS
-from ..widgets.common import Card, small_button
+from ..widgets.common import Card, WheelSlider, small_button
 from ..widgets.mascot import avatar
 from .base import BasePage
 
@@ -82,6 +83,7 @@ class PersonaPage(BasePage):
         self.current = self.ctx.cfg.persona.preset
         self._build_top()
         self._build_editor()
+        self._build_address()
         self._build_preview()
         self.load()
 
@@ -137,7 +139,7 @@ class PersonaPage(BasePage):
         self.iq_bar.setObjectName("mono")
         iq_card.add(self.iq_bar)
 
-        self.iq_slider = QSlider(Qt.Orientation.Horizontal)
+        self.iq_slider = WheelSlider(Qt.Orientation.Horizontal)
         self.iq_slider.setRange(1, 200)
         self.iq_slider.setValue(100)
         self.iq_slider.valueChanged.connect(self._on_iq)
@@ -190,6 +192,40 @@ class PersonaPage(BasePage):
 
     # ---------- 试一句 ----------
 
+    def _build_address(self) -> None:
+        card = Card()
+        title = QLabel("对话识别")
+        title.setObjectName("cardTitle")
+        card.add(title)
+        card.add(_hint("判断群里的话是不是在跟它说：被 @/回复、叫它名字、接着它上一句说，才算对话。"))
+        self.address_check = QCheckBox("只参与跟自己有关的对话")
+        self.address_check.setChecked(self.ctx.cfg.chat.address_awareness)
+        card.add(self.address_check)
+        row = QGridLayout()
+        row.setHorizontalSpacing(16)
+        self.join_slider = WheelSlider(Qt.Orientation.Horizontal)
+        self.join_slider.setRange(0, 100)
+        self.join_slider.setValue(self.ctx.cfg.chat.address_threshold)
+        self.join_label = QLabel("")
+        self.join_label.setObjectName("hint")
+        row.addWidget(QLabel("参与无关对话门槛"), 0, 0)
+        row.addWidget(self.join_slider, 0, 1)
+        row.addWidget(self.join_label, 0, 2)
+        self.freq_slider = WheelSlider(Qt.Orientation.Horizontal)
+        self.freq_slider.setRange(0, 100)
+        self.freq_slider.setValue(int(self.ctx.cfg.chat.group_chat_probability * 100))
+        self.freq_label = QLabel("")
+        self.freq_label.setObjectName("hint")
+        row.addWidget(QLabel("群聊主动搭话概率"), 1, 0)
+        row.addWidget(self.freq_slider, 1, 1)
+        row.addWidget(self.freq_label, 1, 2)
+        card.add_layout(row)
+        self.join_slider.valueChanged.connect(lambda v: self.join_label.setText(f"{v}（越高越少插话）"))
+        self.freq_slider.valueChanged.connect(lambda v: self.freq_label.setText(f"{v}%"))
+        self.join_label.setText(f"{self.join_slider.value()}（越高越少插话）")
+        self.freq_label.setText(f"{self.freq_slider.value()}%")
+        self.add(card)
+
     def _build_preview(self) -> None:
         card = Card(soft=True)
         row = QHBoxLayout()
@@ -226,6 +262,9 @@ class PersonaPage(BasePage):
         self.load_iq()
 
     def load(self) -> None:
+        self.address_check.setChecked(self.ctx.cfg.chat.address_awareness)
+        self.join_slider.setValue(self.ctx.cfg.chat.address_threshold)
+        self.freq_slider.setValue(int(self.ctx.cfg.chat.group_chat_probability * 100))
         self.iq_slider.setValue(self.ctx.cfg.persona.default_iq)
         self._select(self.ctx.cfg.persona.preset, load_text=True)
         self.load_iq()
@@ -258,6 +297,9 @@ class PersonaPage(BasePage):
         (paths.prompts_dir() / f"{self.current}.md").write_text(text, "utf-8")
         self.ctx.cfg.persona.preset = self.current
         self.ctx.cfg.persona.default_iq = self.iq_slider.value()
+        self.ctx.cfg.chat.address_awareness = self.address_check.isChecked()
+        self.ctx.cfg.chat.address_threshold = self.join_slider.value()
+        self.ctx.cfg.chat.group_chat_probability = self.freq_slider.value() / 100
         self.ctx.save_config()
         self.ctx.toast("人格已保存，新消息立即生效")
 

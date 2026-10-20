@@ -59,6 +59,8 @@ class ChatConfig:
     enable_group: bool = True  # 群聊是否响应
     group_scope: str = "all"  # all / whitelist / blacklist
     group_list: list[int] = field(default_factory=list)
+    address_awareness: bool = True  # 判断是否在跟机器人说话
+    address_threshold: int = 50  # 越高越少参与无关对话
 
 
 @dataclass
@@ -146,6 +148,8 @@ class Config:
             f"enable_private = {str(self.chat.enable_private).lower()}",
             f"enable_group = {str(self.chat.enable_group).lower()}",
             f"group_scope = {_q(self.chat.group_scope)}",
+            f"address_awareness = {str(self.chat.address_awareness).lower()}",
+            f"address_threshold = {self.chat.address_threshold}",
             f"group_list = [{', '.join(str(q) for q in self.chat.group_list)}]",
             "",
             "[features]",
@@ -280,6 +284,8 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     cfg.chat.enable_group = _pick(chat, "enable_group", cfg.chat.enable_group)
     cfg.chat.group_scope = _pick(chat, "group_scope", cfg.chat.group_scope)
     cfg.chat.group_list = [int(x) for x in _pick(chat, "group_list", cfg.chat.group_list)]
+    cfg.chat.address_awareness = bool(_pick(chat, "address_awareness", cfg.chat.address_awareness))
+    cfg.chat.address_threshold = int(_pick(chat, "address_threshold", cfg.chat.address_threshold))
 
     feat = raw.get("features", {})
     for name in ("archive", "summarize", "search", "download", "gen_image", "gen_file", "classify", "vision", "voice_in", "voice_out"):

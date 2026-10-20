@@ -543,6 +543,29 @@ class Engine:
             log.error("发送媒体失败：%s", exc)
             await self._deliver(incoming, f"发送失败：{exc}")
 
+    def _addressing_score(self, incoming: Incoming, text: str) -> int:
+        if incoming.at_me:
+            return 100
+        score = 0
+        name = self.cfg.bot_name
+        if name and name in text:
+            score += 45
+        if "你" in text:
+            score += 15
+        history = self.memory.history(incoming.conversation_key)[-8:]
+        last_assistant = next((h for h in reversed(history) if h.get("role") == "assistant"), None)
+        last_user = next((h for h in reversed(history) if h.get("role") == "user"), None)
+        if last_user and last_user.get("name") == incoming.sender_name and last_assistant:
+            score += 30
+        if last_assistant:
+            bot_text = str(last_assistant.get("text") or "")
+            grams = {bot_text[i:i + 2] for i in range(len(bot_text) - 1)}
+            hits = sum(1 for i in range(len(text) - 1) if text[i:i + 2] in grams)
+            score += min(30, hits * 6)
+        if "?" in text or "？" in text:
+            score += 10
+        return min(100, score)
+
     async def _run_command(self, name: str, arg: str, incoming: Incoming) -> None:
         ctx = CommandContext(
             cfg=self.cfg,
@@ -586,6 +609,12 @@ class Engine:
             return True
         if not incoming.is_group:
             return True
+        if self.cfg.chat.address_awareness:
+            score = self._addressing_score(incoming, text)
+            if score >= self.cfg.chat.address_threshold:
+                log.info("判定为对话（%s 分）：%s", score, text[:40])
+                return True
+            return False
 
         # 群聊：按概率搭话，且受冷却和最短长度限制
         if len(text) < 2 or text.startswith("["):

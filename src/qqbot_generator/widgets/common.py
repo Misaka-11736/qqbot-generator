@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -211,3 +212,12 @@ def color_swatch(color: str, size: int = 10) -> QLabel:
     label.setFixedSize(size, size)
     label.setStyleSheet(f"background:{color}; border-radius:{size // 2}px;")
     return label
+
+
+class WheelSlider(QSlider):
+    """鼠标滚轮直接调值，不会被外层滚动区抢走。"""
+
+    def wheelEvent(self, event):
+        step = 1 if event.angleDelta().y() > 0 else -1
+        self.setValue(self.value() + step * max(1, (self.maximum() - self.minimum()) // 50))
+        event.accept()
