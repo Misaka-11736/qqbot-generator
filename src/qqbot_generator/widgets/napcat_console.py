@@ -245,15 +245,39 @@ class NapCatConsole(Card):
             self.qr.setText("先在上方连接")
             return
         try:
+            status = self.client.login_status()
+        except WebUIError:
+            status = {}
+        if status.get("isLogin"):
+            self._show_logged_in()
+            return
+        try:
             data = self.client.qrcode() or self.client.refresh_qrcode()
         except WebUIError as exc:
-            self.qr.setText(f"获取失败\n{exc}")
+            if "Logined" in str(exc):
+                self._show_logged_in()
+            else:
+                self.qr.setText(f"获取失败\n{exc}")
             return
         pix = self._pixmap(data)
         if pix is None:
             self.qr.setText("二维码为空\n可能已经登录")
             return
         self.qr.setPixmap(pix.scaled(196, 196, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def _show_logged_in(self) -> None:
+        name = ""
+        uin = ""
+        try:
+            info = self.client.login_info()
+            name = str(info.get("nick") or info.get("nickName") or "")
+            uin = str(info.get("uin") or info.get("user_id") or "")
+        except WebUIError:
+            pass
+        label = f"{name}（{uin}）" if uin else "当前账号"
+        self.qr.setPixmap(QPixmap())
+        self.qr.setText(f"已登录\n{label}\n\n无需扫码")
+        self.login_state.setText(f"NapCat 已登录 {label}；要换号，请退出 QQ 后重启 NapCat，再回来扫码。")
 
     @staticmethod
     def _pixmap(data: str) -> QPixmap | None:
