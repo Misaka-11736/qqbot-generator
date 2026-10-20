@@ -141,6 +141,10 @@ class ProcessManager(QObject):
     # ---------- 轮询 ----------
 
     def _poll(self) -> None:
+        if self._proc is None and self._status in ("starting", "running"):
+            self._set_status("stopped")
+            self.message.emit("机器人进程已退出，状态已重置")
+            return
         if self._proc is not None:
             code = self._proc.poll()
             if code is not None:

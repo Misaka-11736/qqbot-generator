@@ -74,5 +74,8 @@ class LogBus(QObject):
         folder = paths.logs_dir()
         if not folder.is_dir():
             return None
+        current = folder / "bot.log"
+        if current.is_file():
+            return current
         files = sorted(folder.glob("bot-*.log"))
         return files[-1] if files else None

@@ -45,8 +45,13 @@ def setup_logging(level: str = "INFO", log_dir: Path | None = None, tag: str = "
 
     if log_dir is not None:
         log_dir.mkdir(parents=True, exist_ok=True)
-        path = log_dir / f"{tag}-{time.strftime('%Y%m%d')}.log"
-        file_handler = logging.FileHandler(path, encoding="utf-8")
+        for old in log_dir.glob(f"{tag}-*.log"):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        path = log_dir / f"{tag}.log"
+        file_handler = logging.FileHandler(path, mode="w", encoding="utf-8")
         file_handler.setFormatter(fmt)
         logger.addHandler(file_handler)
 

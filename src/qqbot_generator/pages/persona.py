@@ -400,6 +400,7 @@ class PersonaPage(BasePage):
         (paths.prompts_dir() / f"{self.current}.md").write_text(text, "utf-8")
         self.ctx.cfg.persona.preset = self.current
         self.ctx.cfg.persona.default_iq = self.iq_slider.value()
+        self.ctx.cfg.persona.preset = self.current
         slot = self._slot()
         slot["iq"] = self.iq_slider.value()
         slot["preset"] = self.current
@@ -482,6 +483,7 @@ class PersonaPage(BasePage):
         c.reply_delay = self.delay_check.isChecked()
         c.quote_reply = self.quote_check.isChecked()
         self.ctx.cfg.persona.default_iq = self.iq_slider.value()
+        self.ctx.cfg.persona.preset = self.current
         slot = self._slot()
         slot.update(
             {
