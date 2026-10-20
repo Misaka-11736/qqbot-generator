@@ -39,6 +39,8 @@ class ChatSession(QObject):
         self.provider_label = label
 
         memory = Memory(paths.data_dir() / "chat_memory.json", local.persona.default_iq, local.chat.context_turns)
+        memory.set_iq(KEY, local.persona.default_iq)
+        memory.set_persona(KEY, local.persona.preset)
         self.engine = Engine(local, memory, llm, label)
 
         async def sender(kind: str, target: int, text: str, quote: int | None) -> None:

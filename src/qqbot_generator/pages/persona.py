@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -82,6 +82,11 @@ class PersonaPage(BasePage):
     subtitle = "写它怎么说话，再用智商旋钮调它的态度"
 
     def build(self) -> None:
+        self._loading = True
+        self._dirty = QTimer(self)
+        self._dirty.setSingleShot(True)
+        self._dirty.setInterval(350)
+        self._dirty.timeout.connect(self._flush_live)
         self.current = self.ctx.cfg.persona.preset
         self._build_top()
         self._build_editor()
@@ -90,6 +95,8 @@ class PersonaPage(BasePage):
         self._build_chat()
         self._build_preview()
         self.load()
+        self._loading = False
+        self._connect_live()
 
     # ---------- 上半部分 ----------
 
@@ -416,6 +423,78 @@ class PersonaPage(BasePage):
         c.reply_delay = self.delay_check.isChecked(); c.quote_reply = self.quote_check.isChecked()
         self.ctx.save_config()
         self.ctx.toast("人格已保存，新消息立即生效")
+
+    def _connect_live(self) -> None:
+        for widget, signal in (
+            (self.iq_slider, "valueChanged"),
+            (self.tone_slider, "valueChanged"),
+            (self.verbosity_slider, "valueChanged"),
+            (self.emoji_slider, "valueChanged"),
+            (self.image_thr, "valueChanged"),
+            (self.voice_thr, "valueChanged"),
+            (self.search_thr, "valueChanged"),
+            (self.join_slider, "valueChanged"),
+            (self.freq_slider, "valueChanged"),
+            (self.prob_slider, "valueChanged"),
+            (self.cooldown_spin, "valueChanged"),
+            (self.turns_spin, "valueChanged"),
+            (self.rate_spin, "valueChanged"),
+            (self.chars_spin, "valueChanged"),
+            (self.format_combo, "currentIndexChanged"),
+            (self.delay_check, "toggled"),
+            (self.quote_check, "toggled"),
+            (self.address_check, "toggled"),
+        ):
+            getattr(widget, signal).connect(lambda *_: self._touch())
+        self.phrase_edit.textChanged.connect(lambda *_: self._touch())
+        self.preset_group.buttonClicked.connect(lambda *_: self._touch())
+
+    def _touch(self) -> None:
+        if self._loading:
+            return
+        self._sync_cfg()
+        self._dirty.start()
+
+    def _flush_live(self) -> None:
+        if self._loading:
+            return
+        self._sync_cfg()
+        self.ctx.save_config()
+
+    def _sync_cfg(self) -> None:
+        f = self.ctx.cfg.features
+        c = self.ctx.cfg.chat
+        f.tone = self.tone_slider.value()
+        f.verbosity = self.verbosity_slider.value()
+        f.emoji = self.emoji_slider.value()
+        f.catchphrase = self.phrase_edit.text().strip()
+        f.reply_format = self.format_combo.currentData()
+        f.image_threshold = self.image_thr.value()
+        f.voice_threshold = self.voice_thr.value()
+        f.search_threshold = self.search_thr.value()
+        c.group_chat_probability = self.prob_slider.value() / 100
+        c.address_awareness = self.address_check.isChecked()
+        c.address_threshold = self.join_slider.value()
+        c.group_cooldown = float(self.cooldown_spin.value())
+        c.context_turns = self.turns_spin.value()
+        c.rate_limit_per_minute = self.rate_spin.value()
+        c.max_reply_chars = self.chars_spin.value()
+        c.reply_delay = self.delay_check.isChecked()
+        c.quote_reply = self.quote_check.isChecked()
+        self.ctx.cfg.persona.default_iq = self.iq_slider.value()
+        slot = self._slot()
+        slot.update(
+            {
+                "iq": self.iq_slider.value(),
+                "preset": self.current,
+                "tone": f.tone,
+                "verbosity": f.verbosity,
+                "emoji": f.emoji,
+                "catchphrase": f.catchphrase,
+                "reply_format": f.reply_format,
+                "address_threshold": c.address_threshold,
+            }
+        )
 
     def _reset_prompt(self) -> None:
         text = self.ctx.config_service.reset_prompt(self.current)

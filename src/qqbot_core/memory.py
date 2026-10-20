@@ -60,6 +60,13 @@ class Memory:
         conv["updated"] = time.time()
         self.store.save()
 
+    def apply_default_iq(self, value: int) -> None:
+        self.default_iq = max(1, min(200, int(value)))
+        for conv in self.store.data.get("conversations", {}).values():
+            if isinstance(conv, dict):
+                conv["iq"] = self.default_iq
+        self.store.save()
+
     def persona(self, key: str, fallback: str) -> str:
         value = self._conv(key).get("persona")
         return value if isinstance(value, str) and value else fallback

@@ -16,7 +16,7 @@ from typing import Any
 from .archive import Archive, classify_text
 from .commands import CommandContext, parse_command
 from .commands import handle as handle_command
-from .config import Config
+from .config import Config, load_config
 from .features import style_prompt
 from .keyvault import get_key
 from .llm import LLMError
@@ -69,6 +69,10 @@ class Engine:
         self._search_day = ""
         self._search_used = 0
         self.features = cfg.features
+        try:
+            self._cfg_mtime = cfg.source.stat().st_mtime if cfg.source else 0.0
+        except OSError:
+            self._cfg_mtime = 0.0
         self.archive = Archive(cfg.data_dir / "archive.db") if cfg.features.archive else None
         self.plugins = PluginManager(self)
         if self.archive is not None:
@@ -104,7 +108,30 @@ class Engine:
 
     # ---------------- 事件入口 ----------------
 
+    def _maybe_reload(self) -> None:
+        path = self.cfg.source
+        if path is None:
+            return
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return
+        if mtime <= self._cfg_mtime:
+            return
+        try:
+            new = load_config(path)
+            new.data_dir = self.cfg.data_dir
+            if new.persona.default_iq != self.cfg.persona.default_iq:
+                self.memory.apply_default_iq(new.persona.default_iq)
+            self.cfg = new
+            self.features = new.features
+            self._cfg_mtime = mtime
+            log.info("配置热加载：IQ=%s 风格 tone=%s", new.persona.default_iq, new.features.tone)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("配置热加载失败：%s", exc)
+
     async def handle_event(self, event: dict[str, Any]) -> None:
+        self._maybe_reload()
         if event.get("post_type") != "message":
             return
         incoming = parse_event(event, self.self_id)
