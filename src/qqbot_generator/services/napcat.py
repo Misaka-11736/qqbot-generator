@@ -119,6 +119,14 @@ def configure(folder: Path, port: int, ws_path: str, token: str = "") -> tuple[P
     return config_dir / "onebot11.json", updated
 
 
+def read_webui_token(folder: Path) -> str:
+    try:
+        data = json.loads((folder / "config" / "webui.json").read_text("utf-8-sig"))
+        return str(data.get("token") or "")
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+
 def read_client_urls(folder: Path) -> list[tuple[Path, str]]:
     """读取所有 onebot 配置里的 WS 客户端地址。"""
     config_dir = folder / "config"

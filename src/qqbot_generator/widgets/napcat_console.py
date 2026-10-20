@@ -54,7 +54,7 @@ class NapCatConsole(Card):
         auth.setSpacing(8)
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password.setPlaceholderText("NapCat WebUI 密码（不是 QQ 密码）")
+        self.password.setPlaceholderText("WebUI Token / 密码（通常在 webui.json，不是 QQ 密码）")
         saved = secrets.unprotect(self.ui.get("napcat_webui_pwd"))
         if saved:
             self.password.setText(saved)
@@ -152,20 +152,38 @@ class NapCatConsole(Card):
 
     def _connect(self) -> None:
         password = self.password.text().strip()
-        if not password:
-            self._set_state("先填 WebUI 密码", "warn")
+        candidates = [password] if password else []
+        try:
+            folder = napcat.find_candidates()[0]
+            token = napcat.read_webui_token(folder)
+            if token and token not in candidates:
+                candidates.append(token)
+        except (IndexError, OSError):
+            pass
+        if not candidates:
+            self._set_state("先填 WebUI Token", "warn")
             return
         self._set_state("正在登录 NapCat WebUI…", "info")
-        try:
-            self.client.login(password)
-            self.ui.set("napcat_webui_pwd", secrets.protect(password))
-        except WebUIError as exc:
-            self._set_state(f"登录失败：{exc}", "error")
+        used = ""
+        last_error = ""
+        for candidate in candidates:
+            try:
+                self.client.login(candidate)
+                used = candidate
+                break
+            except WebUIError as exc:
+                last_error = str(exc)
+        if not used:
+            self._set_state(f"登录失败：{last_error}", "error")
             self.login_state.setText(
-                "提示：密码是你在 NapCat 网页里设置的那个；忘了可以打开 WebUI 重新设置，或删掉 NapCat 的 webui.json 后重启。"
+                "提示：这里要填 webui.json 里的 token（默认 qqbot-local-2026），不是 QQ 密码。"
+                "如果改过密码，填新密码；忘了就删掉 webui.json 重启 NapCat。"
             )
             return
+        self.ui.set("napcat_webui_pwd", secrets.protect(used))
         self._set_state("已登录，正在开终端…", "ok")
+        if password and used != password:
+            self.ctx.toast("已自动使用 webui.json 里的 Token 登录")
         self.password.clear()
         self._open_terminal()
         self.timer.start()
