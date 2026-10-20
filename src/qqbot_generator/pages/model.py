@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qqbot_core.llm import ChatLLM
+from qqbot_core.llm import ChatLLM, friendly_error
 
 from ..theme import COLORS
 from ..widgets.common import Card, Field, small_button
@@ -61,7 +61,7 @@ class _Probe(QRunnable):
             elapsed = int((time.time() - started) * 1000)
             self.signals.done.emit(True, f"{elapsed} ms · {reply.strip()[:60]}")
         except Exception as exc:
-            self.signals.done.emit(False, str(exc)[:220])
+            self.signals.done.emit(False, friendly_error(str(exc)))
 
 
 class ModelPage(BasePage):

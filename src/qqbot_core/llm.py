@@ -281,3 +281,40 @@ def make_llm(config) -> tuple[Any, str]:
         retries=config.llm.retries,
     )
     return client, f"{config.llm.model} @ {client.endpoint}"
+
+
+def friendly_error(message: str) -> str:
+    """把 OpenAI 兼容接口的错误翻译成人话。"""
+    text = str(message or "")
+    code_match = __import__("re").search(r"HTTP\s+(\d{3})", text)
+    code = int(code_match.group(1)) if code_match else 0
+    detail = ""
+    body = text.split(":", 1)[1].strip() if ":" in text else text
+    try:
+        payload = __import__("json").loads(body)
+        detail = str(payload.get("error", {}).get("message") or payload.get("message") or "")
+        err_type = str(payload.get("error", {}).get("type") or payload.get("type") or "")
+        err_code = str(payload.get("error", {}).get("code") or payload.get("code") or "")
+        detail = detail or err_code or err_type
+    except Exception:  # noqa: BLE001
+        detail = body[:120]
+    low = (detail + " " + text).lower()
+    if code == 401:
+        return "API Key 无效或已过期：检查 Key 是否复制完整、是否属于当前服务商。"
+    if code == 402:
+        return "账户余额不足：去服务商控制台充值，或换一个有额度的 Key。"
+    if code == 403:
+        return "这个 Key 没有访问权限：确认模型已开通、Key 没有被禁用。"
+    if code == 404:
+        if "model" in low or "not found" in low:
+            return "模型名不存在：检查「模型名」是否填对，或换个可用模型。"
+        return "接口地址不对：Base URL 一般要填到 /v1，程序会自动补 /chat/completions。"
+    if code == 429:
+        return "请求太频繁或额度用尽：等一会儿再试，或检查账户额度。"
+    if code >= 500:
+        return "服务商暂时故障：稍后再试，不是你的配置问题。"
+    if "timeout" in low or "timed out" in low or "超时" in text:
+        return "连接超时：检查网络/代理，或把超时时间调大。"
+    if "urlopen" in low or "network" in low or "getaddrinfo" in low or "name or service" in low or "ssl" in low or "网络错误" in text:
+        return "连不上接口：检查 Base URL、网络和代理设置。"
+    return f"连接失败：{detail or '未知错误'}"
