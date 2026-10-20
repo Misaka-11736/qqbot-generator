@@ -106,7 +106,7 @@ class ProcessManager(QObject):
                 cwd=str(paths.data_dir()),
                 env=env,
                 stdout=subprocess.DEVNULL,
-                stderr=open(paths.data_dir() / "logs" / "bot-stderr.log", "ab"),
+                stderr=open(paths.data_dir() / "logs" / "bot-stderr.log", "ab"),  # noqa: SIM115
                 creationflags=creation,
             )
         except OSError as exc:

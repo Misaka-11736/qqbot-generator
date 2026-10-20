@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import base64
 import re
+import socket
 from io import BytesIO
 
 import qrcode
-import socket
-
-from PySide6.QtCore import QThread, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWebSockets import QWebSocket
 from PySide6.QtWidgets import (

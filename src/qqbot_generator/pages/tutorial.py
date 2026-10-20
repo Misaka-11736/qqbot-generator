@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import asyncio
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QTextBrowser
 
 from qqbot_core.llm import make_llm
 
-from ..context import AppContext
 from ..widgets.common import Card, small_button
 from .base import BasePage
 
@@ -74,7 +73,7 @@ class _QAWorker(QThread):
                 )
             )
             self.done.emit(True, answer)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.done.emit(False, str(exc))
 
 

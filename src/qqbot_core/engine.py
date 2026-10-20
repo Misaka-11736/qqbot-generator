@@ -13,25 +13,22 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from .archive import Archive, classify_text
-from .commands import CommandContext, parse_command
-from .commands import handle as handle_command
 from . import cache as cache_store
+from .archive import Archive, classify_text
 from .config import Config, load_config
 from .features import style_prompt
+from .intent import classify as classify_intent
 from .keyvault import get_key
 from .llm import LLMError
-from .intent import classify as classify_intent
 from .media import extract_frames, media_sources, read_text_attachment
 from .memory import Memory
 from .message import Incoming, parse_event
-from .modality import choose_modality, search_query
+from .modality import choose_modality
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .plugins import PluginManager
 from .semantic import describe as describe_plan
-from .semantic import parse as parse_semantic
 from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
-from .util import RateLimiter, clean_reply, pretty_seconds, split_text
+from .util import RateLimiter, clean_reply, split_text
 from .vision import caption_frames, look_at_frames, looks_like_image_question
 from .voice import prepare as prepare_voice
 from .voice import synthesize, transcribe, voice_sources, wants_voice
@@ -155,7 +152,7 @@ class Engine:
                 new.features.voice_in,
                 new.features.voice_out,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("配置热加载失败：%s", exc)
 
     async def handle_event(self, event: dict[str, Any]) -> None:
@@ -288,7 +285,7 @@ class Engine:
             )
             self.archive.save_summary(conversation, len(rows), summary)
             log.info("[summary] %s %s", conversation, summary.strip()[:500])
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("[summary] 失败：%s", exc)
 
     def _want_vision(self, incoming: Incoming, text: str) -> bool:
@@ -411,21 +408,6 @@ class Engine:
             return True
         return False
 
-    async def _compound_tasks(self, text: str, incoming: Incoming) -> bool:
-        parts = [p.strip() for p in re.split(r"(?:然后|接着|再|顺便|并且|，|,)", text) if p.strip()]
-        if len(parts) < 2:
-            return False
-        queries = [search_query(p, self.features.search_threshold) for p in parts]
-        query = next((q for q in queries if q), "")
-        wants_image = any(choose_modality(p, self.features.voice_threshold, self.features.image_threshold) == "image" for p in parts)
-        if query and wants_image and self.features.search:
-            log.info("拆解任务：搜索 %s → 发图", query[:40])
-            await self._deliver(incoming, "我分两步：先查，再找张图。")
-            path = await self._image_for(query, "给你找的")
-            await self._send_media(incoming, "image", str(path), caption=f"搜到一张：{query}")
-            return True
-        return False
-
     async def _config_watch_loop(self) -> None:
         while True:
             self._maybe_reload()
@@ -442,7 +424,7 @@ class Engine:
                 )
                 if removed:
                     log.info("缓存清理：删除 %s 个文件，剩余 %.1f MB", removed, size / 1024 / 1024)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("缓存清理失败：%s", exc)
             await asyncio.sleep(6 * 3600)
 
@@ -490,40 +472,6 @@ class Engine:
         except ValueError:
             return
         await self.link.send_text("group" if kind == "group" else "private", target, text)
-
-    async def _run_capability(self, name: str, arg: str, incoming: Incoming) -> bool:
-        key = name.lower().strip()
-        if key in ("总结", "摘要", "summary") and self.features.summarize and self.archive:
-            limit = self.features.summary_max
-            try:
-                limit = max(10, min(int(arg.strip() or limit), limit))
-            except ValueError:
-                limit = self.features.summary_max
-            await self._deliver(incoming, "正在翻记录，等我一下…")
-            text = await self._summarize(incoming.conversation_key, limit)
-            for part in split_text(text, limit=1600):
-                await self._deliver(incoming, part)
-            return True
-        if key in ("搜", "搜索", "search") and self.features.search:
-            if not arg.strip():
-                await self._deliver(incoming, "用法：/搜 关键词")
-                return True
-            await self._deliver(incoming, "我去网上看看…")
-            await self._deliver(incoming, await self._search(arg.strip()))
-            return True
-        if key in ("下载", "download") and self.features.download:
-            if not arg.strip():
-                await self._deliver(incoming, "用法：/下载 https://…")
-                return True
-            await self._deliver(incoming, await self._download(arg.strip()))
-            return True
-        if key in ("做图", "画图", "卡片", "card") and self.features.gen_image:
-            await self._make_image(incoming, arg.strip())
-            return True
-        if key in ("做文件", "文件", "file") and self.features.gen_file:
-            await self._make_file(incoming, arg.strip())
-            return True
-        return False
 
     async def _summarize(self, conversation: str, limit: int) -> str:
         rows = self.archive.recent(conversation, limit) if self.archive else []
@@ -659,7 +607,7 @@ class Engine:
                 )
                 data = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
                 query = str(data.get("query") or "").strip()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 query = ""
         if not query:
             query = re.sub(
@@ -687,7 +635,7 @@ class Engine:
             return []
         try:
             data = await self.link.call("get_msg", {"message_id": incoming.reply_id}, timeout=10)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.info("[media] 取被回复消息失败：%s", exc)
             return []
         if not isinstance(data, dict):
@@ -704,7 +652,7 @@ class Engine:
                 continue
             try:
                 fwd = await self.link.call("get_forward_msg", {"id": fid}, timeout=15)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.info("[media] 展开合并转发失败：%s", exc)
                 continue
             nodes = []
@@ -805,29 +753,6 @@ class Engine:
             score += 10
         return min(100, score)
 
-    async def _run_command(self, name: str, arg: str, incoming: Incoming) -> None:
-        ctx = CommandContext(
-            cfg=self.cfg,
-            memory=self.memory,
-            conv_key=incoming.conversation_key,
-            user_id=incoming.user_id,
-            user_name=incoming.sender_name,
-            is_group=incoming.is_group,
-            provider_label=self.provider_label,
-            uptime_text=pretty_seconds(time.time() - self.started_at),
-            stats=self.memory.stats(),
-        )
-        result = handle_command(name, arg, ctx)
-        if not result.handled:
-            return
-        log.info("指令 %s -> %s", name, "silent" if result.silent else f"{len(result.texts)} 条回复")
-        if result.silent:
-            return
-        for text in result.texts:
-            await self._deliver(incoming, text)
-
-    # ---------------- 判定 ----------------
-
     def _in_scope(self, incoming: Incoming) -> bool:
         cfg = self.cfg
         if not incoming.is_group:
@@ -837,9 +762,7 @@ class Engine:
         scope = cfg.chat.group_scope
         if scope == "whitelist" and incoming.group_id not in cfg.chat.group_list:
             return False
-        if scope == "blacklist" and incoming.group_id in cfg.chat.group_list:
-            return False
-        return True
+        return not (scope == "blacklist" and incoming.group_id in cfg.chat.group_list)
 
     def _should_reply(self, incoming: Incoming, text: str) -> bool:
         key = incoming.conversation_key

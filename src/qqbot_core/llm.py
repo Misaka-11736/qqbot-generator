@@ -296,7 +296,7 @@ def friendly_error(message: str) -> str:
         err_type = str(payload.get("error", {}).get("type") or payload.get("type") or "")
         err_code = str(payload.get("error", {}).get("code") or payload.get("code") or "")
         detail = detail or err_code or err_type
-    except Exception:  # noqa: BLE001
+    except Exception:
         detail = body[:120]
     low = (detail + " " + text).lower()
     if code == 401:

@@ -30,9 +30,7 @@ def _is_request(clause: str, plan: SemanticPlan) -> bool:
         return True
     if re.search(r"(帮我|给我|替我|能不能|可以|麻烦|请).{0,8}(搜|查|找|发|来|画|整)", clause):
         return True
-    if re.search(r"(搜|查|找|发|来|画)(一下|一搜|个)?[^，,。；;]{1,20}", clause):
-        return True
-    return False
+    return bool(re.search(r"(搜|查|找|发|来|画)(一下|一搜|个)?[^，,。；;]{1,20}", clause))
 
 
 def classify(text: str, *, vision: bool, search: bool) -> Intent:

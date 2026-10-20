@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-import glob
 import json
 import os
 import urllib.request
@@ -225,7 +224,7 @@ def extract(zip_path: Path, dest: Path) -> Path:
 
 def _qq_roots() -> list[Path]:
     roots = [
-        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tencent" / "QQNT",
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Tencent" / "QQNT",
         Path(r"C:\Program Files\Tencent\QQNT"),
         Path(r"D:\QQNT"),
         Path(r"E:\QQNT"),
@@ -243,7 +242,7 @@ def _qq_roots() -> list[Path]:
                     roots.append(Path(value))
             except OSError:
                 pass
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return [r for r in dict.fromkeys(roots) if r.is_dir()]
 

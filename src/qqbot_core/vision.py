@@ -192,7 +192,7 @@ def caption_frames(frames: list[Path], key: str, model: str) -> str:
     for frame in frames[:1]:
         try:
             content.append({"type": "image_url", "image_url": {"url": _data_uri(frame)}})
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     if len(content) == 1:
         return ""
@@ -212,5 +212,5 @@ def caption_frames(frames: list[Path], key: str, model: str) -> str:
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
         return str(data["choices"][0]["message"]["content"]).strip().splitlines()[0][:40]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""

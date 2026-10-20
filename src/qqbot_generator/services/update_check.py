@@ -16,7 +16,7 @@ def _tuple(version: str) -> tuple[int, ...]:
 
 
 class UpdateChecker(QThread):
-    result = Signal(bool, str, str)  # newer, tag, url
+    result = Signal(str, str, str)  # status(new/latest/error), tag, url
 
     def __init__(self, current: str):
         super().__init__()
@@ -30,8 +30,8 @@ class UpdateChecker(QThread):
             tag = str(data.get("tag_name") or "").strip()
             url = str(data.get("html_url") or "")
             if not tag:
-                self.result.emit(False, "", "")
+                self.result.emit("error", "", "")
                 return
-            self.result.emit(_tuple(tag) > _tuple(self.current), tag, url)
-        except Exception:  # noqa: BLE001
-            self.result.emit(False, "", "")
+            self.result.emit("new" if _tuple(tag) > _tuple(self.current) else "latest", tag, url)
+        except Exception:
+            self.result.emit("error", "", "")

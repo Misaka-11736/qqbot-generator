@@ -6,9 +6,9 @@ import ipaddress
 import json
 import re
 import socket
+import time
 import urllib.parse
 import urllib.request
-import time
 from html.parser import HTMLParser
 from pathlib import Path
 

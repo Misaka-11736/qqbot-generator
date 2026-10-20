@@ -1,6 +1,6 @@
 [project]
 name = "qqbot-generator"
-version = "3.6.9"
+version = "3.7.0"
 description = "QQ Bot生成器：NapCat + OneBot + LLM 的 Windows 桌面客户端"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,6 +21,8 @@ ignore = [
     "E501",   # 中文注释不强制折行
     "RUF012", # Qt 里类属性可变很常见
     "SIM102", # 嵌套 if 有时更好读
+    "E702",   # 少量滑杆初始化写在同一行
+    "RUF006", # 后台任务引用由引擎生命周期持有
     "RUF001", "RUF002", "RUF003", # 中文标点不当作歧义字符
     "SIM105", # try/except/pass 读起来更直观
 ]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QAbstractNativeEventFilter, QPoint, Qt, QTimer
+from PySide6.QtCore import QAbstractNativeEventFilter, QPoint, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -433,8 +433,8 @@ class MainWindow(QMainWindow):
         self._update_checker.result.connect(self._on_update_result)
         self._update_checker.start()
 
-    def _on_update_result(self, newer: bool, tag: str, url: str) -> None:
-        if newer:
+    def _on_update_result(self, status: str, tag: str, url: str) -> None:
+        if status == "new":
             box = QMessageBox(self)
             box.setWindowTitle("发现新版本")
             box.setText(f"新版本 {tag} 可用，当前是 v{paths.APP_VERSION}。")
@@ -445,7 +445,7 @@ class MainWindow(QMainWindow):
             if box.clickedButton() is open_btn and url:
                 QDesktopServices.openUrl(QUrl(url))
         elif getattr(self, "_manual_update", False):
-            self.toast.show_message("已经是最新版本")
+            self.toast.show_message("已经是最新版本" if status == "latest" else "检查更新失败：网络或 GitHub 接口不可用")
 
     def _restore(self) -> None:
         self.showNormal()
