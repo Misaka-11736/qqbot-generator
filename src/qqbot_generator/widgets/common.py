@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QListView,
     QPushButton,
     QSizePolicy,
     QSlider,
+    QStyle,
+    QStyleOptionSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -214,10 +220,72 @@ def color_swatch(color: str, size: int = 10) -> QLabel:
     return label
 
 
-class WheelSlider(QSlider):
+class DragOnlySlider(QSlider):
+    """只有按住 handle 才能拖动；点击轨道不跳值，滚轮/键盘保留。"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._dragging = False
+
+    def _on_handle(self, pos) -> bool:
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+        handle = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self)
+        return handle.adjusted(-4, -8, 4, 8).contains(pos)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and not self._on_handle(event.position().toPoint()):
+            self._dragging = False
+            event.accept()
+            return
+        self._dragging = event.button() == Qt.MouseButton.LeftButton
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._dragging:
+            super().mouseMoveEvent(event)
+        else:
+            event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._dragging = False
+        super().mouseReleaseEvent(event)
+
+class WheelSlider(DragOnlySlider):
     """鼠标滚轮直接调值，不会被外层滚动区抢走。"""
 
     def wheelEvent(self, event):
         step = 1 if event.angleDelta().y() > 0 else -1
         self.setValue(self.value() + step * max(1, (self.maximum() - self.minimum()) // 50))
         event.accept()
+
+
+class RoundedComboBox(QComboBox):
+    """全局统一：透明弹层 + 圆角列表 + 阴影，避免原生方角。"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        view = QListView(self)
+        view.setFrameShape(QFrame.Shape.NoFrame)
+        view.setStyleSheet(
+            "QListView{background:#FFFFFF;border:1px solid #DDE5F2;border-radius:12px;"
+            "padding:5px;color:#1F2A44;outline:none;}"
+            "QListView::item{min-height:28px;padding:3px 10px;border-radius:8px;}"
+            "QListView::item:selected{background:#FFE9E2;color:#C85A3F;}"
+        )
+        self.setView(view)
+        window = view.window()
+        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        window.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
+        effect = QGraphicsDropShadowEffect(window)
+        effect.setBlurRadius(24)
+        effect.setOffset(0, 6)
+        effect.setColor(QColor(20, 35, 60, 60))
+        window.setGraphicsEffect(effect)
+
+    def showPopup(self) -> None:
+        super().showPopup()
+        window = self.view().window()
+        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+

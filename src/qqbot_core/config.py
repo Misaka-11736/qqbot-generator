@@ -86,6 +86,13 @@ class LogConfig:
 
 
 @dataclass
+class LearningConfig:
+    enabled: bool = True
+    min_labels: int = 5
+    ttl_days: int = 14
+
+
+@dataclass
 class SocialConfig:
     enabled: bool = False
     summary_every: int = 40
@@ -106,6 +113,7 @@ class Config:
     log: LogConfig = field(default_factory=LogConfig)
     features: FeatureConfig = field(default_factory=FeatureConfig)
     social: SocialConfig = field(default_factory=SocialConfig)
+    learning: LearningConfig = field(default_factory=LearningConfig)
     data_dir: Path = PROJECT_ROOT / "data"
     source: Path | None = None
 
@@ -231,6 +239,11 @@ class Config:
             f"sample_seconds = {self.social.sample_seconds}",
             f"retention_days = {self.social.retention_days}",
             f"max_mb = {self.social.max_mb}",
+            "",
+            "[learning]",
+            f"enabled = {str(self.learning.enabled).lower()}",
+            f"min_labels = {self.learning.min_labels}",
+            f"ttl_days = {self.learning.ttl_days}",
             "",
             "[persona]",
             f"preset = {_q(self.persona.preset)}",
@@ -407,6 +420,11 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     cfg.social.sample_seconds = max(5, min(600, int(_pick(social, "sample_seconds", cfg.social.sample_seconds))))
     cfg.social.retention_days = max(1, min(7, int(_pick(social, "retention_days", cfg.social.retention_days))))
     cfg.social.max_mb = max(20, min(100, int(_pick(social, "max_mb", cfg.social.max_mb))))
+
+    learning = raw.get("learning", {})
+    cfg.learning.enabled = bool(_pick(learning, "enabled", cfg.learning.enabled))
+    cfg.learning.min_labels = max(1, min(50, int(_pick(learning, "min_labels", cfg.learning.min_labels))))
+    cfg.learning.ttl_days = max(1, min(90, int(_pick(learning, "ttl_days", cfg.learning.ttl_days))))
 
     log = raw.get("log", {})
     cfg.log.level = _pick(log, "level", cfg.log.level)

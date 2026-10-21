@@ -13,6 +13,7 @@ from .logs import LogsPage
 from .model import ModelPage
 from .napcat import NapCatPage
 from .persona import PersonaPage
+from .review import ReviewPage
 from .settings import SettingsPage
 from .tutorial import TutorialPage
 
@@ -26,6 +27,7 @@ PAGES: list[type[BasePage]] = [
     ChatPage,
     LogsPage,
     DiagnosticsPage,
+    ReviewPage,
     TutorialPage,
     SettingsPage,
     AboutPage,

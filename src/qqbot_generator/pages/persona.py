@@ -8,7 +8,6 @@ from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
-    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -29,7 +28,7 @@ from qqbot_core.persona import (
 
 from .. import paths
 from ..theme import COLORS
-from ..widgets.common import Card, WheelSlider, small_button
+from ..widgets.common import Card, RoundedComboBox, WheelSlider, small_button
 from ..widgets.mascot import avatar
 from .base import BasePage
 
@@ -260,7 +259,7 @@ class PersonaPage(BasePage):
         self.phrase_edit = QLineEdit()
         self.phrase_edit.setPlaceholderText("口头禅，可留空")
         grid.addWidget(QLabel("口头禅"), 1, 2); grid.addWidget(self.phrase_edit, 1, 3)
-        self.format_combo = QComboBox()
+        self.format_combo = RoundedComboBox()
         for label, value in (("自动（按语义）", "auto"), ("总是文字", "text"), ("总是图片", "image"), ("总是语音", "voice")):
             self.format_combo.addItem(label, value)
         grid.addWidget(QLabel("回复形式"), 2, 0); grid.addWidget(self.format_combo, 2, 1)

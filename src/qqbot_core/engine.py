@@ -19,6 +19,7 @@ from .config import Config, load_config
 from .features import style_prompt
 from .intent import classify as classify_intent
 from .keyvault import get_key
+from .learning import LearningIteration
 from .llm import LLMError, make_llm
 from .media import extract_frames, media_sources, read_text_attachment
 from .memory import Memory
@@ -73,7 +74,9 @@ class Engine:
         self._last_tasks: dict[str, dict] = {}
         self._summary_counts: dict[str, int] = {}
         self.social = ShadowSocial(lambda: self.cfg, lambda: self.llm, cfg.data_dir)
+        self.learning = LearningIteration(cfg.data_dir, lambda: self.llm, lambda: self.cfg)
         self._config_task: asyncio.Task | None = None
+        self._learning_task: asyncio.Task | None = None
         self._llm_signature = (
             cfg.llm.provider_id,
             cfg.llm.base_url,
@@ -123,6 +126,8 @@ class Engine:
             self._cache_task = asyncio.create_task(self._cache_cleanup_loop())
         if self._config_task is None or self._config_task.done():
             self._config_task = asyncio.create_task(self._config_watch_loop())
+        if self._learning_task is None or self._learning_task.done():
+            self._learning_task = asyncio.create_task(self.learning.maybe_run())
 
     # ---------------- 事件入口 ----------------
 
@@ -379,6 +384,7 @@ class Engine:
         if not answer:
             log.warning("[vision] 人格重写失败，未发送客观摘要")
             return
+        self._record_learn_reply(incoming, text, answer)
         for part in split_text(answer, limit=600):
             await self._deliver(incoming, part)
 
@@ -394,7 +400,9 @@ class Engine:
             count = int(summary.group(1) or self.features.summary_max)
             count = max(10, min(count, self.features.summary_max))
             await self._deliver(incoming, "正在翻记录，等我一下…")
-            for part in split_text(await self._summarize(incoming.conversation_key, count, incoming), limit=1600):
+            result = await self._summarize(incoming.conversation_key, count, incoming)
+            self._record_learn_reply(incoming, text, result)
+            for part in split_text(result, limit=1600):
                 await self._deliver(incoming, part)
             return True
 
@@ -437,7 +445,9 @@ class Engine:
         if self.features.search and plan.action == "search":
             log.info("[task] 网页搜索：%s", query)
             await self._deliver(incoming, "我去网上看看…")
-            await self._deliver(incoming, await self._search(query, incoming))
+            result = await self._search(query, incoming)
+            self._record_learn_reply(incoming, text, result)
+            await self._deliver(incoming, result)
             return True
         return False
 
@@ -900,6 +910,12 @@ class Engine:
 
     # ---------------- 回复 ----------------
 
+    def _record_learn_reply(self, incoming: Incoming, user_text: str, reply: str) -> None:
+        try:
+            self.learning.store.record_reply(incoming.conversation_key, incoming.message_id, user_text, reply)
+        except Exception as exc:
+            log.debug("[learn] 记录回复失败：%s", exc)
+
     async def _reply(self, incoming: Incoming, text: str) -> None:
         key = incoming.conversation_key
         lock = self._locks.setdefault(key, asyncio.Lock())
@@ -945,6 +961,7 @@ class Engine:
         log.info("[state] IQ=%s preset=%s style(tone=%s verbosity=%s emoji=%s)", iq, preset, self.features.tone, self.features.verbosity, self.features.emoji)
         self.memory.add(key, "user", text, incoming.sender_name)
         self.memory.add(key, "assistant", "".join(parts), self.cfg.bot_name)
+        self._record_learn_reply(incoming, text, "".join(parts))
         self.memory.mark_chat(key)
 
         mode = choose_modality(text, self.features.voice_threshold, self.features.image_threshold) if self.features.reply_format == "auto" else self.features.reply_format
@@ -1020,6 +1037,9 @@ class Engine:
         style = style_prompt(self.features)
         if style:
             extra += " 表达风格：" + style
+        adaptation = self.learning.rules.active_text(incoming.conversation_key)
+        if adaptation:
+            extra += "\n" + adaptation
         system = build_system_prompt(
             preset_text=load_preset(preset),
             persona_label=PRESETS.get(preset, preset),
@@ -1075,7 +1095,11 @@ class Engine:
             iq=iq,
             user_name=incoming.sender_name,
             is_group=incoming.is_group,
-            extra=f"现在是 {clock}。" + ((" 表达风格：" + style_prompt(self.features)) if style_prompt(self.features) else ""),
+            extra=(
+                f"现在是 {clock}。"
+                + ((" 表达风格：" + style_prompt(self.features)) if style_prompt(self.features) else "")
+                + ("\n" + self.learning.rules.active_text(incoming.conversation_key) if self.learning.rules.active_text(incoming.conversation_key) else "")
+            ),
         )
         messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         history = self.memory.history(incoming.conversation_key)

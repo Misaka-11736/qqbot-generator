@@ -7,7 +7,6 @@ import sqlite3
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -22,7 +21,7 @@ from qqbot_core.keyvault import get_key, set_key
 from qqbot_core.providers import choices as provider_choices
 from qqbot_core.providers import get as get_provider
 
-from ..widgets.common import Card, Field, small_button
+from ..widgets.common import Card, DragOnlySlider, Field, RoundedComboBox, small_button
 from ..widgets.loading import BusyButton, mark_refreshed
 from .base import BasePage
 
@@ -99,7 +98,7 @@ class CapabilitiesPage(BasePage):
         self.brave_edit.setEchoMode(QLineEdit.EchoMode.Password)
         brave_saved = bool(get_key(self.ctx.data_dir, "brave"))
         self.brave_edit.setPlaceholderText("已保存，留空则不修改" if brave_saved else "粘贴 Brave API Key")
-        self.search_combo = QComboBox()
+        self.search_combo = RoundedComboBox()
         self.search_combo.addItem("Brave（推荐）", "brave")
         self.search_combo.addItem("Tavily", "tavily")
         self.search_combo.addItem("DuckDuckGo（免费无 Key）", "duckduckgo")
@@ -174,7 +173,7 @@ class CapabilitiesPage(BasePage):
         self.phrase_edit = QLineEdit(f.catchphrase)
         self.phrase_edit.setPlaceholderText("口头禅，可留空")
         grid.addWidget(Field("口头禅", self.phrase_edit), 1, 1)
-        self.format_combo = QComboBox()
+        self.format_combo = RoundedComboBox()
         self.format_combo.addItem("自动（按语义）", "auto")
         self.format_combo.addItem("总是文字", "text")
         self.format_combo.addItem("总是图片", "image")
@@ -318,7 +317,7 @@ class CapabilitiesPage(BasePage):
         vrow = QGridLayout()
         vrow.setHorizontalSpacing(16)
         vrow.setVerticalSpacing(10)
-        self.vision_combo = QComboBox()
+        self.vision_combo = RoundedComboBox()
         self.vision_combo.addItem("跟随聊天 Provider", "")
         for item in provider_choices():
             if "vision" in item.capabilities:
@@ -344,7 +343,7 @@ class CapabilitiesPage(BasePage):
         vgrid = QGridLayout()
         vgrid.setHorizontalSpacing(16)
         vgrid.setVerticalSpacing(10)
-        self.asr_combo = QComboBox()
+        self.asr_combo = RoundedComboBox()
         self.asr_combo.addItem("本地 faster-whisper", "local")
         for item in provider_choices():
             if "asr" in item.capabilities:
@@ -352,7 +351,7 @@ class CapabilitiesPage(BasePage):
         idx = self.asr_combo.findData(f.asr_provider)
         self.asr_combo.setCurrentIndex(idx if idx >= 0 else 0)
         vgrid.addWidget(Field("语音识别", self.asr_combo), 0, 0)
-        self.voice_combo = QComboBox()
+        self.voice_combo = RoundedComboBox()
         self.voice_combo.addItems(["small", "base", "tiny"])
         idx_voice = self.voice_combo.findText(f.voice_model)
         if idx_voice >= 0:
@@ -365,7 +364,7 @@ class CapabilitiesPage(BasePage):
         self.asr_key.setEchoMode(QLineEdit.EchoMode.Password)
         vgrid.addWidget(Field("ASR Key（本地不用填）", self.asr_key), 1, 1)
 
-        self.tts_combo = QComboBox()
+        self.tts_combo = RoundedComboBox()
         self.tts_combo.addItem("本地 Edge-TTS", "edge")
         for item in provider_choices():
             if "tts" in item.capabilities:
@@ -552,7 +551,7 @@ def _hint(text: str) -> QLabel:
 
 
 def _slider(value: int) -> QSlider:
-    slider = QSlider(Qt.Orientation.Horizontal)
+    slider = DragOnlySlider(Qt.Orientation.Horizontal)
     slider.setRange(0, 100)
     slider.setValue(int(value))
     return slider

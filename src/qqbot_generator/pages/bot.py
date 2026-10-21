@@ -7,7 +7,6 @@ import re
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -20,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..theme import COLORS
-from ..widgets.common import Card, Field, small_button
+from ..widgets.common import Card, DragOnlySlider, Field, RoundedComboBox, small_button
 from .base import BasePage
 
 
@@ -89,7 +88,7 @@ class BotPage(BasePage):
         row = QGridLayout()
         row.setHorizontalSpacing(16)
         row.setVerticalSpacing(14)
-        self.scope_combo = QComboBox()
+        self.scope_combo = RoundedComboBox()
         self.scope_combo.addItem("所有群", "all")
         self.scope_combo.addItem("仅白名单里的群", "whitelist")
         self.scope_combo.addItem("排除黑名单里的群", "blacklist")
@@ -116,7 +115,7 @@ class BotPage(BasePage):
         row.setHorizontalSpacing(16)
         row.setVerticalSpacing(14)
 
-        self.mode_combo = QComboBox()
+        self.mode_combo = RoundedComboBox()
         self.mode_combo.addItem("反向 WebSocket（推荐）", "reverse")
         self.mode_combo.addItem("正向 WebSocket", "forward")
         row.addWidget(Field("模式", self.mode_combo, "反向：NapCat 连机器人"), 0, 0)
@@ -155,9 +154,8 @@ class BotPage(BasePage):
         prob_box = QWidget()
         prob_layout = QHBoxLayout(prob_box)
         prob_layout.setContentsMargins(0, 0, 0, 0)
-        from PySide6.QtWidgets import QSlider
 
-        self.prob_slider = QSlider(Qt.Orientation.Horizontal)
+        self.prob_slider = DragOnlySlider(Qt.Orientation.Horizontal)
         self.prob_slider.setRange(0, 100)
         self.prob_slider.setValue(6)
         self.prob_value = QLabel("6%")

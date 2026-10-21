@@ -8,7 +8,6 @@ import time
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
@@ -26,7 +25,7 @@ from qqbot_core.providers import choices as provider_choices
 from qqbot_core.providers import get as get_provider
 
 from ..theme import COLORS
-from ..widgets.common import Card, Field, small_button
+from ..widgets.common import Card, Field, RoundedComboBox, small_button
 from .base import BasePage
 
 PRESETS = {
@@ -98,13 +97,13 @@ class ModelPage(BasePage):
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(14)
 
-        self.chat_provider_combo = QComboBox()
+        self.chat_provider_combo = RoundedComboBox()
         for item in provider_choices():
             self.chat_provider_combo.addItem(item.name, item.id)
         self.chat_provider_combo.currentIndexChanged.connect(self._provider_changed)
         grid.addWidget(Field("文字 Provider", self.chat_provider_combo), 0, 0)
 
-        self.provider_combo = QComboBox()
+        self.provider_combo = RoundedComboBox()
         self.provider_combo.addItem("自动（有 Key 就用真模型）", "auto")
         self.provider_combo.addItem("强制在线模型", "openai")
         self.provider_combo.addItem("强制离线大脑", "mock")

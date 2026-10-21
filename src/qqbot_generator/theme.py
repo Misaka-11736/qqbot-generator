@@ -312,7 +312,7 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
 QComboBox QAbstractItemView {{
     background-color: #FFFFFF;
     border: 1px solid {c['line']};
-    border-radius: 0px;
+    border-radius: 12px;
     padding: 4px;
     color: {c['ink']};
     selection-background-color: {c['coral_soft']};
@@ -323,6 +323,7 @@ QComboBox QAbstractItemView::item {{
     min-height: 28px;
     padding: 2px 10px;
     border: none;
+    border-radius: 8px;
     background: transparent;
 }}
 QComboBox QAbstractItemView::item:selected {{
