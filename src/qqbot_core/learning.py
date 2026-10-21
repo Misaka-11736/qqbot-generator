@@ -316,6 +316,12 @@ class LearningIteration:
         except Exception as exc:
             log.warning("[learn] 生成规则失败：%s", exc)
             return
+        if not rules:
+            log.warning("[learn] 模型没有产出规则，保留标注等下次启动重试")
+            return
         low, high = self.rules.apply(rules, cfg.ttl_days)
+        if low == 0 and high == 0:
+            log.warning("[learn] 规则均无效，保留标注等下次启动重试")
+            return
         self.store.mark_processed([r["feedback_id"] for r in sample[:40]])
         log.info("[learn] 标注 %s 条 → 自动规则 %s，待确认 %s", len(sample[:40]), low, high)
