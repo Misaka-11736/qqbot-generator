@@ -13,7 +13,7 @@ from PIL import Image
 
 VISION_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 VISION_PROMPT = (
-    "你在 QQ 里看到对方发了这张图。用 2~4 句口语说出图里是什么、对方可能想问什么；"
+    "客观描述这张图的内容，不要猜测发送者身份，不要使用“对方/用户”等第三人称，不要直接组织成聊天回复。"
     "直接说结论，不要列点、不要标题、不要贴链接、不要说“这张图片显示/根据图片”；"
     "看不清就直说看不清，不要编。"
 )
@@ -91,7 +91,7 @@ def look_at_image(url: str, key: str, model: str, question: str, cache: Path, ba
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"对方的话：{ask}"},
+                    {"type": "text", "text": f"问题：{ask}"},
                     {"type": "image_url", "image_url": {"url": uri}},
                 ],
             },
@@ -141,7 +141,7 @@ def look_at_frames(frames: list[Path], key: str, model: str, question: str, extr
         return "还没配百炼 Key，去「能力」页填一下。"
     if not frames:
         return "没拿到能看的画面。"
-    content: list[dict] = [{"type": "text", "text": f"对方的话：{question or '看看这些内容'}" + (f"\n文件内容：{extra[:3000]}" if extra else "")}]
+    content: list[dict] = [{"type": "text", "text": f"问题：{question or '看看这些内容'}" + (f"\n文件内容：{extra[:3000]}" if extra else "")}]
     for frame in frames[:3]:
         try:
             content.append({"type": "image_url", "image_url": {"url": _data_uri(frame)}})
@@ -154,8 +154,9 @@ def look_at_frames(frames: list[Path], key: str, model: str, question: str, extr
         "messages": [
             {
                 "role": "system",
-                "content": "你在 QQ 里收到对方发的图片/表情/GIF/视频截图/文件。用 2~4 句口语说清是什么、对方可能想问什么；"
-                "不列点、不贴链接、不说“这张图片显示”；看不清就直说。",
+                "content": "客观描述这张图片/表情/GIF/视频截图/文件的内容：画面、文字、界面元素和可见动作。"
+                "不要猜测发送者身份，不要使用“对方/用户/提问者”等第三人称，不要直接组织成聊天回复；"
+                "如果看不清或不确定就明确写“不确定”。只输出事实摘要。",
             },
             {"role": "user", "content": content},
         ],

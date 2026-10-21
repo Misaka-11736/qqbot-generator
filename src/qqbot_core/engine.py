@@ -349,7 +349,7 @@ class Engine:
             frames.extend(got)
             if note:
                 notes.append(note)
-        answer = ""
+        facts = ""
         if frames:
             if search:
                 query = await asyncio.to_thread(caption_frames, frames, key, vision_model, vision_base)
@@ -357,11 +357,11 @@ class Engine:
                     log.info("[vision] 以图搜图关键词：%s", query)
                     try:
                         path = await self._image_for(query, "按图搜的", direct=True)
-                        await self._send_media(incoming, "image", str(path), caption=f"按图搜到：{query}")
+                        await self._send_media(incoming, "image", str(path), caption=f"这张图我查到的是：{query}")
                         return
                     except ToolError as exc:
                         log.info("[vision] 以图搜图失败：%s", exc)
-            answer = await asyncio.to_thread(
+            facts = await asyncio.to_thread(
                 look_at_frames,
                 frames,
                 key,
@@ -371,16 +371,14 @@ class Engine:
                 vision_base,
             )
         elif notes:
-            answer = await self.llm.complete(
-                [
-                    {"role": "system", "content": "对方发来一个文件。用 2~3 句口语说文件大概是什么、有什么值得注意的，不列点、不贴链接。"},
-                    {"role": "user", "content": "\n".join(notes)[:3000]},
-                ],
-                temperature=0.4,
-                max_tokens=260,
-            )
+            facts = "\n".join(notes)[:3000]
         else:
-            answer = "这个文件/视频我这边解析不了。"
+            await self._deliver(incoming, "这个文件/视频我这边解析不了。")
+            return
+        answer = await self._persona_rewrite(facts, incoming, "识图")
+        if not answer:
+            log.warning("[vision] 人格重写失败，未发送客观摘要")
+            return
         for part in split_text(answer, limit=600):
             await self._deliver(incoming, part)
 
@@ -396,7 +394,7 @@ class Engine:
             count = int(summary.group(1) or self.features.summary_max)
             count = max(10, min(count, self.features.summary_max))
             await self._deliver(incoming, "正在翻记录，等我一下…")
-            for part in split_text(await self._summarize(incoming.conversation_key, count), limit=1600):
+            for part in split_text(await self._summarize(incoming.conversation_key, count, incoming), limit=1600):
                 await self._deliver(incoming, part)
             return True
 
@@ -439,7 +437,7 @@ class Engine:
         if self.features.search and plan.action == "search":
             log.info("[task] 网页搜索：%s", query)
             await self._deliver(incoming, "我去网上看看…")
-            await self._deliver(incoming, await self._search(query))
+            await self._deliver(incoming, await self._search(query, incoming))
             return True
         return False
 
@@ -508,7 +506,7 @@ class Engine:
             return
         await self.link.send_text("group" if kind == "group" else "private", target, text)
 
-    async def _summarize(self, conversation: str, limit: int) -> str:
+    async def _summarize(self, conversation: str, limit: int, incoming: Incoming | None = None) -> str:
         rows = self.archive.recent(conversation, limit) if self.archive else []
         if len(rows) < 3:
             return f"这个会话只归档到 {len(rows)} 条，至少 3 条才能总结。"
@@ -540,9 +538,14 @@ class Engine:
         )
         if self.archive:
             self.archive.save_summary(conversation, len(rows), final)
+        if incoming is not None:
+            rewritten = await self._persona_rewrite(final.strip(), incoming, "群聊总结")
+            if not rewritten:
+                return ""
+            return f"最近 {len(rows)} 条总结：\n{rewritten}"
         return f"最近 {len(rows)} 条总结：\n{final.strip()}"
 
-    async def _search(self, query: str) -> str:
+    async def _search(self, query: str, incoming: Incoming | None = None) -> str:
         today = time.strftime("%Y-%m-%d")
         if today != self._search_day:
             self._search_day = today
@@ -569,26 +572,29 @@ class Engine:
         self._search_used += 1
         if not results:
             return "没搜到结果。"
-        context = "\n".join(f"- {r['title']}：{r['description']}" for r in results)
-        try:
-            answer = await self.llm.complete(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "你刚随手在网上查了一下，现在用聊天的方式把结果告诉对方。"
-                            "要求：2~4 句口语，直接说结论；不要列点、不要标题、不要贴链接、"
-                            "不要说“根据搜索结果/来源/资料显示”；不要重复对方的问题；"
-                            "不确定就直说没查到，不要编。"
-                        ),
-                    },
-                    {"role": "user", "content": f"对方问：{query}\n\n我查到的零碎信息：\n{context[:5000]}"},
-                ],
-                temperature=0.6,
-                max_tokens=260,
-            )
-        except Exception:
-            answer = "\n".join(r["description"] for r in results[:2])
+        facts = "\n".join(f"- {r['title']}：{r['description']}" for r in results)
+        if incoming is not None:
+            answer = await self._persona_rewrite(f"查询内容：{query}\n\n{facts}", incoming, "搜索")
+            if not answer:
+                return ""
+        else:
+            try:
+                answer = await self.llm.complete(
+                    [
+                        {
+                            "role": "system",
+                            "content": (
+                                "你刚查到了以下信息。用 2~4 句口语直接说结论；不要列点、不要标题、不要贴链接、"
+                                "不要说“根据搜索结果/来源/资料显示”；不确定就直说没查到，不要编。"
+                            ),
+                        },
+                        {"role": "user", "content": f"查询：{query}\n\n信息：\n{facts[:5000]}"},
+                    ],
+                    temperature=0.6,
+                    max_tokens=260,
+                )
+            except Exception:
+                answer = "\n".join(r["description"] for r in results[:2])
         answer = re.sub(r"https?://\S+", "", answer)
         answer = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", answer)
         answer = re.sub(r"(来源|参考|链接)[:：].*", "", answer)
@@ -996,6 +1002,62 @@ class Engine:
             return plan.strip()[:40]
         except Exception:
             return ""
+
+    async def _persona_rewrite(self, facts: str, incoming: Incoming, kind: str) -> str:
+        facts = (facts or "").strip()
+        if not facts:
+            return ""
+        iq = int(self.cfg.persona.default_iq)
+        preset = self.cfg.persona.preset
+        now = time.localtime()
+        clock = f"{time.strftime('%m月%d日 %H:%M', now)} {WEEKDAYS[now.tm_wday]}"
+        extra = (
+            f"现在是 {clock}。你刚通过「{kind}」拿到一些事实，准备在群里接话。"
+            "只以第一人称说给当前会话的人听；禁止出现“对方/用户/提问者/提问的人”这些第三人称。"
+            "只能改写语气、人称、节奏，绝对不能增加事实里没有的信息；"
+            "事实里标了不确定的地方，必须保留不确定，不要说得像确定。"
+        )
+        style = style_prompt(self.features)
+        if style:
+            extra += " 表达风格：" + style
+        system = build_system_prompt(
+            preset_text=load_preset(preset),
+            persona_label=PRESETS.get(preset, preset),
+            bot_name=self.cfg.bot_name,
+            iq=iq,
+            user_name=incoming.sender_name,
+            is_group=incoming.is_group,
+            extra=extra,
+        )
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+        history = self.memory.history(incoming.conversation_key)
+        limit = max(2, self.cfg.chat.context_turns * 2)
+        for item in history[-limit:]:
+            if item.get("role") in ("user", "assistant") and item.get("text"):
+                messages.append({"role": item["role"], "content": item["text"]})
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"工具事实：\n{facts[:4000]}\n\n"
+                    f"请把上述事实改写成一条{kind}后的自然回复。"
+                    "不要提“工具/搜索/识图/事实”这些词，不要复述整段摘要，不要新增信息。"
+                ),
+            }
+        )
+        temperature, max_tokens, max_chars = style_of(iq)
+        for attempt in range(2):
+            try:
+                raw = await self.llm.complete(messages, temperature=temperature, max_tokens=max_tokens)
+                reply = self._de_assistant(clean_reply(raw))
+                reply = re.sub(r"(对方|用户|提问者|提问的人)", "你", reply)
+                if reply:
+                    return reply[:max_chars]
+                log.warning("[persona] %s 重写为空（第 %s 次）", kind, attempt + 1)
+            except Exception as exc:
+                log.warning("[persona] %s 重写失败（第 %s 次）：%s", kind, attempt + 1, exc)
+        log.warning("[persona] %s 重写两次失败，放弃发送", kind)
+        return ""
 
     def _de_assistant(self, text: str) -> str:
         text = re.sub(r"^(首先|其次|总之|总的来说|希望对你有帮助)[，,：:\s]*", "", text)
