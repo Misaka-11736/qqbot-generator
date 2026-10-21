@@ -10,19 +10,20 @@ class FeatureConfig:
     """每个能力独立开关；Key 不放这里，存 secrets.json。"""
 
     archive: bool = True  # 归档所有消息
-    summarize: bool = True  # 允许 /总结
-    search: bool = True  # 允许 /搜
-    download: bool = True  # 允许 /下载
-    gen_image: bool = True  # 允许 /做图
-    gen_file: bool = True  # 允许 /做文件
-    classify: bool = True  # 群聊内容分类
-    vision: bool = True  # 识图
+    summarize: bool = False  # 允许 /总结
+    search: bool = False  # 允许 /搜
+    download: bool = False  # 允许 /下载
+    gen_image: bool = False  # 允许 /做图
+    gen_file: bool = False  # 允许 /做文件
+    classify: bool = False  # 群聊内容分类
+    vision: bool = False  # 识图
     vision_model: str = "qwen3-vl-plus"
-    voice_in: bool = True  # 语音识别
+    voice_in: bool = False  # 语音识别
     voice_model: str = "small"
     voice_name: str = "zh-CN-XiaoxiaoNeural"
-    voice_out: bool = True  # 语音合成
+    voice_out: bool = False  # 语音合成
 
+    search_provider: str = "brave"  # brave / tavily / duckduckgo
     search_daily_limit: int = 50
     download_max_mb: int = 20
     summary_max: int = 1000

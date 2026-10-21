@@ -19,15 +19,16 @@ from .config import Config, load_config
 from .features import style_prompt
 from .intent import classify as classify_intent
 from .keyvault import get_key
-from .llm import LLMError
+from .llm import LLMError, make_llm
 from .media import extract_frames, media_sources, read_text_attachment
 from .memory import Memory
 from .message import Incoming, parse_event
 from .modality import choose_modality
 from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .plugins import PluginManager
+from .providers import get as get_provider
 from .semantic import describe as describe_plan
-from .tools import ToolError, brave_image, brave_search, download, make_card, make_file
+from .tools import ToolError, brave_image, brave_search, download, duckduckgo_search, make_card, make_file, tavily_search
 from .util import RateLimiter, clean_reply, split_text
 from .vision import caption_frames, look_at_frames, looks_like_image_question
 from .voice import prepare as prepare_voice
@@ -71,6 +72,12 @@ class Engine:
         self._last_tasks: dict[str, dict] = {}
         self._summary_counts: dict[str, int] = {}
         self._config_task: asyncio.Task | None = None
+        self._llm_signature = (
+            cfg.llm.provider_id,
+            cfg.llm.base_url,
+            cfg.llm.model,
+            cfg.resolve_api_key() if hasattr(cfg, "resolve_api_key") else "",
+        )
         self._search_day = ""
         self._search_used = 0
         self.features = cfg.features
@@ -135,6 +142,14 @@ class Engine:
             self.cfg = new
             self.features = new.features
             self._cfg_mtime = mtime
+            try:
+                signature = (new.llm.provider_id, new.llm.base_url, new.llm.model, new.resolve_api_key())
+            except Exception:
+                signature = (new.llm.provider_id, new.llm.base_url, new.llm.model, "")
+            if signature != self._llm_signature:
+                self.llm, self.provider_label = make_llm(new)
+                self._llm_signature = signature
+                log.info("[config] Provider 切换为 %s / %s", new.llm.provider_id, new.llm.model)
             log.info(
                 "[config] IQ=%s preset=%s tone=%s verbosity=%s emoji=%s reply=%s "
                 "image_thr=%s voice_thr=%s search_thr=%s vision=%s search=%s voice_in=%s voice_out=%s",
@@ -297,10 +312,16 @@ class Engine:
 
     async def _vision_reply(self, incoming: Incoming, text: str, media: list[dict], search: bool = False) -> None:
         log.info("识图/媒体触发：%s（%s）", (text or "无文字")[:60], ",".join(m["kind"] for m in media))
-        key = get_key(self.cfg.data_dir, "qwen")
-        if not key:
-            await self._deliver(incoming, "识图还没配 Key，去「能力」页填百炼的 Key。")
+        provider = get_provider(self.cfg.llm.provider_id)
+        if provider is None or "vision" not in provider.capabilities:
+            await self._deliver(incoming, "当前 API Provider 不支持看图，去「能力」页换一个支持视觉的。")
             return
+        key = self.cfg.resolve_api_key() or ("ollama" if provider.id == "ollama" else "")
+        if not key:
+            await self._deliver(incoming, "看图需要当前 Provider 的 API Key，去「能力」页填一下。")
+            return
+        vision_base = provider.base_url
+        vision_model = provider.vision_model or self.features.vision_model
         await self._deliver(incoming, "我看看…")
         cache = self.cfg.data_dir / "cache" / "vision"
         frames: list[Path] = []
@@ -318,7 +339,7 @@ class Engine:
         answer = ""
         if frames:
             if search:
-                query = await asyncio.to_thread(caption_frames, frames, key, self.features.vision_model)
+                query = await asyncio.to_thread(caption_frames, frames, key, vision_model, vision_base)
                 if query:
                     log.info("[vision] 以图搜图关键词：%s", query)
                     try:
@@ -331,9 +352,10 @@ class Engine:
                 look_at_frames,
                 frames,
                 key,
-                self.features.vision_model,
+                vision_model,
                 text,
                 "\n".join(notes),
+                vision_base,
             )
         elif notes:
             answer = await self.llm.complete(
@@ -514,11 +536,20 @@ class Engine:
             self._search_used = 0
         if self._search_used >= self.features.search_daily_limit:
             return "今天搜索次数用完了，明天再来。"
-        key = get_key(self.cfg.data_dir, "brave")
-        if not key:
-            return "还没配置 Brave Key，去「能力」页填一下。"
+        provider = self.features.search_provider
         try:
-            results = await asyncio.to_thread(brave_search, key, query, 5)
+            if provider == "tavily":
+                key = get_key(self.cfg.data_dir, "tavily")
+                if not key:
+                    return "还没配置 Tavily Key，去「能力」页填一下。"
+                results = await asyncio.to_thread(tavily_search, key, query, 5)
+            elif provider == "duckduckgo":
+                results = await asyncio.to_thread(duckduckgo_search, query, 5)
+            else:
+                key = get_key(self.cfg.data_dir, "brave")
+                if not key:
+                    return "还没配置 Brave Key，去「能力」页填一下。"
+                results = await asyncio.to_thread(brave_search, key, query, 5)
         except ToolError as exc:
             log.warning("[search] 失败：%s", exc)
             return str(exc)

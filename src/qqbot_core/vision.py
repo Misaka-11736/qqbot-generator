@@ -73,7 +73,7 @@ def _data_uri(path: Path) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def look_at_image(url: str, key: str, model: str, question: str, cache: Path) -> str:
+def look_at_image(url: str, key: str, model: str, question: str, cache: Path, base: str = VISION_BASE) -> str:
     if not key:
         return "还没配百炼 Key，去「能力」页填一下。"
     cache.mkdir(parents=True, exist_ok=True)
@@ -99,8 +99,9 @@ def look_at_image(url: str, key: str, model: str, question: str, cache: Path) ->
         "temperature": 0.6,
         "max_tokens": 300,
     }
+    endpoint = base if base.rstrip("/").endswith("chat/completions") else base.rstrip("/") + "/chat/completions"
     req = urllib.request.Request(
-        VISION_BASE,
+        endpoint,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
         method="POST",
@@ -135,7 +136,7 @@ def looks_like_image_question(text: str) -> bool:
     )
 
 
-def look_at_frames(frames: list[Path], key: str, model: str, question: str, extra: str = "") -> str:
+def look_at_frames(frames: list[Path], key: str, model: str, question: str, extra: str = "", base: str = VISION_BASE) -> str:
     if not key:
         return "还没配百炼 Key，去「能力」页填一下。"
     if not frames:
@@ -161,8 +162,9 @@ def look_at_frames(frames: list[Path], key: str, model: str, question: str, extr
         "temperature": 0.6,
         "max_tokens": 300,
     }
+    endpoint = base if base.rstrip("/").endswith("chat/completions") else base.rstrip("/") + "/chat/completions"
     req = urllib.request.Request(
-        VISION_BASE,
+        endpoint,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
         method="POST",
@@ -185,7 +187,7 @@ def look_at_frames(frames: list[Path], key: str, model: str, question: str, extr
     return re.sub(r"\n{2,}", "\n", text).strip()[:500]
 
 
-def caption_frames(frames: list[Path], key: str, model: str) -> str:
+def caption_frames(frames: list[Path], key: str, model: str, base: str = VISION_BASE) -> str:
     if not key or not frames:
         return ""
     content: list[dict] = [{"type": "text", "text": "用不超过 10 个字概括这张图的主体/商品/角色，只输出关键词，不要解释。"}]
@@ -202,8 +204,9 @@ def caption_frames(frames: list[Path], key: str, model: str) -> str:
         "temperature": 0.2,
         "max_tokens": 40,
     }
+    endpoint = base if base.rstrip("/").endswith("chat/completions") else base.rstrip("/") + "/chat/completions"
     req = urllib.request.Request(
-        VISION_BASE,
+        endpoint,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
         method="POST",

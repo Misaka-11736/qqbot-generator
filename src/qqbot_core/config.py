@@ -33,6 +33,7 @@ class LLMConfig:
     provider: str = "auto"  # auto=有 key 就用 openai，否则用 mock；也可强制 openai / mock
     base_url: str = "https://api.deepseek.com/v1"
     model: str = "deepseek-chat"
+    provider_id: str = "deepseek"  # 当前 API Provider
     api_key: str = ""
     api_key_env: str = "QQBOT_API_KEY"
     temperature: float = 0.95
@@ -106,6 +107,20 @@ class Config:
         return "openai" if self.resolve_api_key() else "mock"
 
     def resolve_api_key(self) -> str:
+        try:
+            from .keyvault import get_key
+
+            saved = get_key(self.data_dir, f"llm_{self.llm.provider_id}")
+            if saved:
+                return saved
+            if self.llm.provider_id == "qwen":
+                legacy = get_key(self.data_dir, "qwen")
+                if legacy:
+                    return legacy
+        except Exception:
+            pass
+        if self.llm.provider_id == "ollama":
+            return "ollama"
         if self.llm.api_key.strip():
             return self.llm.api_key.strip()
         if self.llm.api_key_env:
@@ -130,6 +145,7 @@ class Config:
             "",
             "[llm]",
             f"provider = {_q(self.llm.provider)}",
+            f"provider_id = {_q(self.llm.provider_id)}",
             f"base_url = {_q(self.llm.base_url)}",
             f"model = {_q(self.llm.model)}",
             f"api_key = {_q(self.llm.api_key)}",
@@ -171,6 +187,7 @@ class Config:
             f"voice_out = {str(self.features.voice_out).lower()}",
             f"voice_model = {_q(self.features.voice_model)}",
             f"voice_name = {_q(self.features.voice_name)}",
+            f"search_provider = {_q(self.features.search_provider)}",
             f"search_daily_limit = {self.features.search_daily_limit}",
             f"download_max_mb = {self.features.download_max_mb}",
             f"summary_max = {self.features.summary_max}",
@@ -286,6 +303,22 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
 
     llm = raw.get("llm", {})
     cfg.llm.provider = _pick(llm, "provider", cfg.llm.provider)
+    if "provider_id" in llm:
+        cfg.llm.provider_id = str(_pick(llm, "provider_id", cfg.llm.provider_id))
+    else:
+        base = str(_pick(llm, "base_url", cfg.llm.base_url)).lower()
+        for pid, needle in (
+            ("qwen", "dashscope"),
+            ("siliconflow", "siliconflow"),
+            ("openrouter", "openrouter"),
+            ("zhipu", "bigmodel"),
+            ("groq", "groq.com"),
+            ("ollama", "11434"),
+            ("openai", "api.openai.com"),
+        ):
+            if needle in base:
+                cfg.llm.provider_id = pid
+                break
     cfg.llm.base_url = _pick(llm, "base_url", cfg.llm.base_url)
     cfg.llm.model = _pick(llm, "model", cfg.llm.model)
     cfg.llm.api_key = _pick(llm, "api_key", cfg.llm.api_key)

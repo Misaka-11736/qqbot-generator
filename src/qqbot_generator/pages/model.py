@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qqbot_core.keyvault import get_key, set_key
 from qqbot_core.llm import ChatLLM, friendly_error
 
 from ..theme import COLORS
@@ -27,10 +28,10 @@ from ..widgets.common import Card, Field, small_button
 from .base import BasePage
 
 PRESETS = {
-    "DeepSeek": ("https://api.deepseek.com/v1", "deepseek-chat"),
-    "通义千问": ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-    "智谱 GLM": ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
-    "本地 Ollama": ("http://127.0.0.1:11434/v1", "qwen2.5:7b"),
+    "DeepSeek": ("deepseek", "https://api.deepseek.com/v1", "deepseek-chat"),
+    "通义千问": ("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
+    "智谱 GLM": ("zhipu", "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
+    "本地 Ollama": ("ollama", "http://127.0.0.1:11434/v1", "qwen2.5:7b"),
 }
 
 
@@ -191,6 +192,9 @@ class ModelPage(BasePage):
         self.base_edit.setText(cfg.llm.base_url)
         self.model_edit.setText(cfg.llm.model)
         self.key_edit.setText(cfg.llm.api_key)
+        if not cfg.llm.api_key:
+            saved = bool(get_key(self.ctx.data_dir, f"llm_{cfg.llm.provider_id}"))
+            self.key_edit.setPlaceholderText("已保存，留空不修改" if saved else "粘贴 API Key")
         self.env_edit.setText(cfg.llm.api_key_env)
         self.timeout_spin.setValue(int(cfg.llm.timeout))
         self.temp_spin.setValue(cfg.llm.temperature)
@@ -201,10 +205,14 @@ class ModelPage(BasePage):
             self.result.setText(f"当前：{cfg.llm.model}")
 
     def _fill_preset(self, name: str) -> None:
-        base, model = PRESETS[name]
+        provider_id, base, model = PRESETS[name]
+        self.ctx.cfg.llm.provider_id = provider_id
         self.base_edit.setText(base)
         self.model_edit.setText(model)
-        self.ctx.toast(f"已填入 {name} 的地址和模型，记得填 Key")
+        self.key_edit.clear()
+        saved = bool(get_key(self.ctx.data_dir, f"llm_{provider_id}"))
+        self.key_edit.setPlaceholderText("已保存，留空不修改" if saved else "粘贴这家 Provider 的 Key")
+        self.ctx.toast(f"已填入 {name}，记得保存")
 
     def _values(self) -> tuple[str, str, str, str, float]:
         base = self.base_edit.text().strip()
@@ -224,7 +232,9 @@ class ModelPage(BasePage):
         cfg.llm.provider = self.provider_combo.currentData()
         cfg.llm.base_url = base
         cfg.llm.model = model
-        cfg.llm.api_key = key
+        if key:
+            set_key(self.ctx.data_dir, f"llm_{cfg.llm.provider_id}", key)
+            cfg.llm.api_key = ""
         cfg.llm.api_key_env = env or "QQBOT_API_KEY"
         cfg.llm.timeout = timeout
         cfg.llm.temperature = round(self.temp_spin.value(), 2)
@@ -238,6 +248,8 @@ class ModelPage(BasePage):
         if provider == "mock":
             self.result.setText("离线模式不需要测试，直接用模板大脑。")
             return
+        if not key:
+            key = self.ctx.cfg.resolve_api_key()
         if not key:
             self.result.setText("没有 Key：先填 Key，或把调用方式改成「离线」。")
             return

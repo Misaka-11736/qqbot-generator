@@ -5,6 +5,15 @@
 - 修复机器人进程退出后 GUI 仍显示“运行中”的状态残留；
 - 人格卡切换立即写入当前 preset，不再要等保存。
 
+## 3.8.0 — 2026-10-21
+
+- 能力页新增 API Provider 选择（DeepSeek/Qwen/SiliconFlow/OpenRouter/OpenAI/Groq/智谱/Ollama）；
+- 能力开关按 Provider capabilities 自动启用/禁用，DeepSeek 不再显示可选视觉；
+- Provider Key 按家 DPAPI 加密，旧 DeepSeek/Qwen Key 自动兼容；
+- 视觉调用改为跟随 Provider 的 base_url + vision model；
+- 搜索支持 Brave / Tavily / DuckDuckGo 三选一；
+- 新用户默认只开聊天与归档，其余能力全关。
+
 ## 3.7.0 — 2026-10-20
 
 - 清理引擎里已废弃的命令处理方法与导入；

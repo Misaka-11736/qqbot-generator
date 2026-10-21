@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
 
 from qqbot_core.archive import Archive
 from qqbot_core.keyvault import get_key, set_key
+from qqbot_core.providers import choices as provider_choices
+from qqbot_core.providers import get as get_provider
 
 from ..widgets.common import Card, Field, small_button
 from ..widgets.loading import BusyButton, mark_refreshed
@@ -81,12 +83,13 @@ class CapabilitiesPage(BasePage):
         # v3.2 语音开关已并入上方网格
         switch.add_layout(grid)
         self.add(switch)
+        self._build_provider_card()
 
         keys = Card()
         title = QLabel("API Key")
         title.setObjectName("cardTitle")
         keys.add(title)
-        keys.add(_hint("Brave 用于搜索；百炼 Qwen 用于看图/视频/文件。Key 不会写进 config.toml。"))
+        keys.add(_hint("Brave 用于搜索；Provider Key 在上方「API Provider」卡片填写。Key 不会写进 config.toml。"))
         row = QGridLayout()
         row.setHorizontalSpacing(16)
         row.setVerticalSpacing(12)
@@ -94,23 +97,24 @@ class CapabilitiesPage(BasePage):
         self.brave_edit.setEchoMode(QLineEdit.EchoMode.Password)
         brave_saved = bool(get_key(self.ctx.data_dir, "brave"))
         self.brave_edit.setPlaceholderText("已保存，留空则不修改" if brave_saved else "粘贴 Brave API Key")
-        row.addWidget(Field("Brave Search Key", self.brave_edit), 0, 0)
-        self.qwen_edit = QLineEdit()
-        self.qwen_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        qwen_saved = bool(get_key(self.ctx.data_dir, "qwen"))
-        self.qwen_edit.setPlaceholderText("已保存，留空则不修改" if qwen_saved else "粘贴百炼 API Key（看图/视频用）")
-        row.addWidget(Field("百炼 Qwen Key", self.qwen_edit), 0, 1)
+        self.search_combo = QComboBox()
+        self.search_combo.addItem("Brave（推荐）", "brave")
+        self.search_combo.addItem("Tavily", "tavily")
+        self.search_combo.addItem("DuckDuckGo（免费无 Key）", "duckduckgo")
+        idx_search = self.search_combo.findData(f.search_provider)
+        self.search_combo.setCurrentIndex(idx_search if idx_search >= 0 else 0)
+        row.addWidget(Field("搜索提供商", self.search_combo), 0, 0)
+        row.addWidget(Field("Brave Search Key", self.brave_edit), 0, 1)
+        self.tavily_edit = QLineEdit()
+        self.tavily_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        tavily_saved = bool(get_key(self.ctx.data_dir, "tavily"))
+        self.tavily_edit.setPlaceholderText("已保存，留空则不修改" if tavily_saved else "Tavily API Key（可选）")
+        row.addWidget(Field("Tavily Key", self.tavily_edit), 1, 0)
         self.voice_combo = QComboBox()
         self.voice_combo.addItems(["small", "base", "tiny"])
         idx_voice = self.voice_combo.findText(f.voice_model)
         if idx_voice >= 0:
             self.voice_combo.setCurrentIndex(idx_voice)
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(["qwen3-vl-plus", "qwen3-vl-max", "qwen-vl-max", "qwen-vl-plus"])
-        idx_model = self.model_combo.findText(f.vision_model)
-        if idx_model >= 0:
-            self.model_combo.setCurrentIndex(idx_model)
-        row.addWidget(Field("视觉模型", self.model_combo), 1, 0)
         self.search_limit = QSpinBox()
         self.search_limit.setRange(1, 500)
         self.search_limit.setValue(f.search_daily_limit)
@@ -225,6 +229,51 @@ class CapabilitiesPage(BasePage):
         row.addWidget(save)
         self.set_footer(footer)
 
+    def _build_provider_card(self) -> None:
+        card = Card()
+        title = QLabel("API Provider")
+        title.setObjectName("cardTitle")
+        card.add(title)
+        card.add(_hint("聊天和看图由同一家 Provider 提供；语音、搜索是独立能力，不受 Provider 限制。"))
+        row = QGridLayout()
+        row.setHorizontalSpacing(16)
+        row.setVerticalSpacing(10)
+        self.provider_combo = QComboBox()
+        for item in provider_choices():
+            self.provider_combo.addItem(item.name, item.id)
+        idx = self.provider_combo.findData(self.ctx.cfg.llm.provider_id)
+        self.provider_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        row.addWidget(Field("提供商", self.provider_combo), 0, 0)
+        self.provider_key = QLineEdit()
+        self.provider_key.setEchoMode(QLineEdit.EchoMode.Password)
+        saved = bool(get_key(self.ctx.data_dir, f"llm_{self.ctx.cfg.llm.provider_id}"))
+        self.provider_key.setPlaceholderText("已保存，留空不修改" if saved else "粘贴这家 Provider 的 API Key")
+        row.addWidget(Field("API Key", self.provider_key), 0, 1)
+        self.provider_hint = QLabel("")
+        self.provider_hint.setObjectName("cardHint")
+        self.provider_hint.setWordWrap(True)
+        card.add_layout(row)
+        card.add(self.provider_hint)
+        self.add(card)
+        self.provider_combo.currentIndexChanged.connect(self._refresh_provider_ui)
+        self._refresh_provider_ui()
+
+    def _refresh_provider_ui(self) -> None:
+        provider = get_provider(self.provider_combo.currentData())
+        if provider is None:
+            return
+        caps = "、".join({"chat": "聊天", "vision": "看图"}.get(c, c) for c in provider.capabilities)
+        self.provider_hint.setText(f"{provider.note}\n支持：{caps}　Key：{provider.key_url}")
+        saved = bool(get_key(self.ctx.data_dir, f"llm_{provider.id}") or (provider.id == "qwen" and get_key(self.ctx.data_dir, "qwen")))
+        self.provider_key.clear()
+        self.provider_key.setPlaceholderText("已保存，留空不修改" if saved else "粘贴这家 Provider 的 API Key")
+        if "vision" in self.checks:
+            ok = "vision" in provider.capabilities
+            self.checks["vision"].setEnabled(ok)
+            self.checks["vision"].setText("图片/视频/文件" if ok else "图片/视频/文件（Provider 不支持）")
+            if not ok:
+                self.checks["vision"].setChecked(False)
+
     def on_show(self) -> None:
         if not self.archive:
             self.count_label.setText("归档未开启")
@@ -261,27 +310,46 @@ class CapabilitiesPage(BasePage):
 
     def _save(self) -> None:
         f = self.ctx.cfg.features
+        provider = get_provider(self.provider_combo.currentData())
+        if provider is not None:
+            old_provider = self.ctx.cfg.llm.provider_id
+            old_key = self.ctx.cfg.llm.api_key
+            self.ctx.cfg.llm.provider_id = provider.id
+            self.ctx.cfg.llm.base_url = provider.base_url
+            self.ctx.cfg.llm.model = provider.chat_model
+            self.ctx.cfg.llm.api_key = old_key if provider.id == old_provider else ""
+            if provider.vision_model:
+                f.vision_model = provider.vision_model
+            if "vision" not in provider.capabilities:
+                f.vision = False
+                self.checks["vision"].setChecked(False)
+            key = self.provider_key.text().strip()
+            if key:
+                set_key(self.ctx.data_dir, f"llm_{provider.id}", key)
+                self.ctx.cfg.llm.api_key = ""
+                self.provider_key.clear()
+                self.provider_key.setPlaceholderText("已保存，留空不修改")
         for name, box in self.checks.items():
             setattr(f, name, box.isChecked())
         f.search_daily_limit = self.search_limit.value()
         f.download_max_mb = self.download_limit.value()
         f.summary_max = self.summary_limit.value()
         # 表达风格已迁移到人格页保存
-        f.vision_model = self.model_combo.currentText()
         f.voice_model = self.voice_combo.currentText()
         f.voice_name = self.voice_name.text().strip() or "zh-CN-XiaoxiaoNeural"
         f.auto_search = self.auto_check.isChecked()
         f.auto_search_interval = self.auto_interval.value()
         f.auto_search_target = self.auto_target.text().strip()
         f.auto_search_topics = self.auto_topics.text().strip()
+        f.search_provider = self.search_combo.currentData()
+        if self.tavily_edit.text().strip():
+            set_key(self.ctx.data_dir, "tavily", self.tavily_edit.text().strip())
+            self.tavily_edit.clear()
+            self.tavily_edit.setPlaceholderText("已保存，留空则不修改")
         if self.brave_edit.text().strip():
             set_key(self.ctx.data_dir, "brave", self.brave_edit.text().strip())
             self.brave_edit.clear()
             self.brave_edit.setPlaceholderText("已保存，留空则不修改")
-        if self.qwen_edit.text().strip():
-            set_key(self.ctx.data_dir, "qwen", self.qwen_edit.text().strip())
-            self.qwen_edit.clear()
-            self.qwen_edit.setPlaceholderText("已保存，留空则不修改")
         self.ctx.save_config()
         if self.ctx.process.running:
             self.ctx.process.stop()

@@ -219,3 +219,42 @@ def brave_image(key: str, query: str) -> str:
         if candidate:
             return str(candidate)
     return ""
+
+
+def tavily_search(key: str, query: str, count: int = 5) -> list[dict]:
+    if not key:
+        raise ToolError("还没填 Tavily API Key")
+    payload = json.dumps({"api_key": key, "query": query, "max_results": max(1, min(count, 8))}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.tavily.com/search",
+        data=payload,
+        headers={"Content-Type": "application/json", "User-Agent": UA},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ToolError("Tavily 搜索暂时连不上，请稍后再试") from exc
+    return [
+        {"title": str(item.get("title") or ""), "url": str(item.get("url") or ""), "description": str(item.get("content") or "")}
+        for item in data.get("results") or []
+    ]
+
+
+def duckduckgo_search(query: str, count: int = 5) -> list[dict]:
+    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
+    try:
+        data, _ctype = _get(url, timeout=20)
+    except OSError as exc:
+        raise ToolError("DuckDuckGo 搜索暂时连不上，请稍后再试") from exc
+    html = data.decode("utf-8", errors="replace")
+    links = re.findall(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.S)
+    snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.S)
+    def clean(text: str) -> str:
+        return re.sub(r"<[^>]+>", "", text).strip()
+
+    results = []
+    for index, (href, title) in enumerate(links[:count]):
+        results.append({"title": clean(title), "url": href, "description": clean(snippets[index]) if index < len(snippets) else ""})
+    return results
