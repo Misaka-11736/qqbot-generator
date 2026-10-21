@@ -59,7 +59,7 @@ class CapabilitiesPage(BasePage):
         title = QLabel("能力开关")
         title.setObjectName("cardTitle")
         switch.add(title)
-        switch.add(_hint("关掉后不会再执行对应任务；归档关掉后总结和分类都不可用。"))
+        switch.add(_hint("关掉后不会再执行对应任务；归档关掉后总结和分类都不可用。滚轮经过滑块/数字框默认滚页面，按住 Ctrl 才调值。"))
         grid = QGridLayout()
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(10)

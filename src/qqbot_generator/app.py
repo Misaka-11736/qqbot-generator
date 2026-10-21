@@ -35,6 +35,7 @@ from .widgets.common import StatusPill, Toast
 from .widgets.mascot import mascot_pixmap
 from .widgets.sidebar import Sidebar
 from .widgets.titlebar import TitleBar
+from .widgets.wheel_guard import WheelGuard
 
 
 class _ResizeHandle(QWidget):
@@ -116,6 +117,8 @@ class MainWindow(QMainWindow):
         outer.addWidget(body, 1)
         self.setCentralWidget(root)
 
+        self._wheel_guard = WheelGuard(self)
+        QApplication.instance().installEventFilter(self._wheel_guard)
         self._build_pages()
         self.toast = Toast(root)
         self._install_resize_borders()

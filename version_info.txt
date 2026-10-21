@@ -17,12 +17,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'QQ Bot Generator'),
             StringStruct('FileDescription', 'QQ Bot生成器'),
-            StringStruct('FileVersion', '3.9.3.0'),
+            StringStruct('FileVersion', '3.9.4.0'),
             StringStruct('InternalName', 'QQBotGenerator'),
             StringStruct('LegalCopyright', 'MIT License'),
             StringStruct('OriginalFilename', 'QQBotGenerator.exe'),
             StringStruct('ProductName', 'QQ Bot生成器'),
-            StringStruct('ProductVersion', '3.9.3.0')
+            StringStruct('ProductVersion', '3.9.4.0')
           ]
         )
       ]
