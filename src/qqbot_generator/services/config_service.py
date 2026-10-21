@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 
 from qqbot_core.config import Config, load_config
+from qqbot_core.keyvault import set_key
 from qqbot_core.persona import PRESETS, set_prompts_dir
 
 from .. import paths
@@ -28,6 +29,10 @@ class ConfigService:
             self.path.write_text(cfg.toml_dump(), "utf-8")
         cfg = load_config(self.path)
         self._normalize(cfg)
+        if cfg.llm.api_key.strip():
+            set_key(cfg.data_dir, f"llm_{cfg.llm.provider_id}", cfg.llm.api_key.strip())
+            cfg.llm.api_key = ""
+            self.path.write_text(cfg.toml_dump(), "utf-8")
         set_prompts_dir(paths.prompts_dir())
         return cfg
 

@@ -10,7 +10,7 @@ from pathlib import Path
 
 APP_NAME = "QQBotGenerator"
 APP_TITLE = "QQ Bot生成器"
-APP_VERSION = "3.8.0"
+APP_VERSION = "3.8.1"
 APP_TAGLINE = "一只住在你 QQ 里的蓝鲸女仆"
 
 

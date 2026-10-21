@@ -5,6 +5,10 @@
 - 修复机器人进程退出后 GUI 仍显示“运行中”的状态残留；
 - 人格卡切换立即写入当前 preset，不再要等保存。
 
+## 3.8.1 — 2026-10-21
+
+- 启动时把 config.toml 里的旧明文 API Key 自动迁移到 DPAPI 加密存储并清空明文字段。
+
 ## 3.8.0 — 2026-10-21
 
 - 能力页新增 API Provider 选择（DeepSeek/Qwen/SiliconFlow/OpenRouter/OpenAI/Groq/智谱/Ollama）；
