@@ -199,6 +199,20 @@ def test_config() -> None:
     check("provider 可推导", cfg.effective_provider in ("mock", "openai"))
 
 
+def test_social_config() -> None:
+    cfg = Config()
+    cfg.social.enabled = True
+    cfg.social.summary_every = 25
+    cfg.social.retention_days = 3
+    cfg.social.max_mb = 80
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "config.toml"
+        path.write_text(cfg.toml_dump(), "utf-8")
+        loaded = load_config(path)
+        check("社交影子配置能往返", loaded.social.enabled and loaded.social.summary_every == 25)
+        check("社交影子保留上限", loaded.social.retention_days == 3 and loaded.social.max_mb == 80)
+
+
 def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -213,6 +227,7 @@ def main() -> int:
     test_http_llm()
     test_text()
     test_config()
+    test_social_config()
     print()
     print(f"通过 {PASS} 项，失败 {FAIL} 项")
     return 0 if FAIL == 0 else 1

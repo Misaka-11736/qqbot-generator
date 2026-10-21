@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -153,6 +155,7 @@ class CapabilitiesPage(BasePage):
         self.add(auto)
 
         self.checks["auto_search"] = self.auto_check
+        self._build_social_card()
 
         style = Card()
         title = QLabel("表达风格")
@@ -220,6 +223,80 @@ class CapabilitiesPage(BasePage):
         save.clicked.connect(self._save)
         row.addWidget(save)
         self.set_footer(footer)
+
+    def _build_social_card(self) -> None:
+        s = self.ctx.cfg.social
+        card = Card()
+        title = QLabel("群聊社交影子模式")
+        title.setObjectName("cardTitle")
+        card.add(title)
+        card.add(_hint("只记录“本来会不会接话”和群话题，不发送、不改现有回复。数据存 social.db，按下方策略自动清理。"))
+        self.social_check = QCheckBox("启用影子观察")
+        self.social_check.setChecked(bool(s.enabled))
+        card.add(self.social_check)
+        row = QGridLayout()
+        row.setHorizontalSpacing(16)
+        row.setVerticalSpacing(10)
+        self.social_every = QSpinBox()
+        self.social_every.setRange(5, 200)
+        self.social_every.setValue(int(s.summary_every))
+        self.social_every.setSuffix(" 条")
+        row.addWidget(Field("每累计多少条生成摘要", self.social_every), 0, 0)
+        self.social_idle = QSpinBox()
+        self.social_idle.setRange(1, 180)
+        self.social_idle.setValue(int(s.idle_minutes))
+        self.social_idle.setSuffix(" 分钟")
+        row.addWidget(Field("空闲多久补摘要", self.social_idle), 0, 1)
+        self.social_sample = QSpinBox()
+        self.social_sample.setRange(5, 600)
+        self.social_sample.setValue(int(s.sample_seconds))
+        self.social_sample.setSuffix(" 秒")
+        row.addWidget(Field("同群决策采样间隔", self.social_sample), 1, 0)
+        self.social_days = QSpinBox()
+        self.social_days.setRange(1, 7)
+        self.social_days.setValue(int(s.retention_days))
+        self.social_days.setSuffix(" 天")
+        row.addWidget(Field("保留天数（最多 7 天）", self.social_days), 1, 1)
+        self.social_mb = QSpinBox()
+        self.social_mb.setRange(20, 100)
+        self.social_mb.setValue(int(s.max_mb))
+        self.social_mb.setSuffix(" MB")
+        row.addWidget(Field("数据容量上限", self.social_mb), 2, 0)
+        self.social_stats = QLabel("")
+        self.social_stats.setObjectName("cardHint")
+        row.addWidget(self.social_stats, 2, 1)
+        card.add_layout(row)
+        self.social_clear = small_button("清空影子数据", "secondary")
+        self.social_clear.clicked.connect(self._clear_shadow)
+        card.add(self.social_clear)
+        self.add(card)
+
+    def _refresh_shadow_stats(self) -> None:
+        db = self.ctx.data_dir / "social.db"
+        if not db.exists():
+            self.social_stats.setText("还没有影子数据")
+            return
+        try:
+            with sqlite3.connect(db) as conn:
+                groups = conn.execute("SELECT COUNT(*) FROM groups").fetchone()[0]
+                decisions = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+                joins = conn.execute("SELECT COUNT(*) FROM decisions WHERE join_ok=1").fetchone()[0]
+            mb = round(db.stat().st_size / 1024 / 1024, 2)
+            self.social_stats.setText(f"{groups} 个群 · {decisions} 次决策 · {joins} 次想接 · {mb} MB")
+        except Exception:
+            self.social_stats.setText("影子数据库尚未初始化")
+
+    def _clear_shadow(self) -> None:
+        if self.ctx.process.running:
+            self.ctx.toast("先停止机器人，再清空影子数据")
+            return
+        db = self.ctx.data_dir / "social.db"
+        for suffix in ("", "-wal", "-shm"):
+            path = db.with_name(db.name + suffix)
+            if path.exists():
+                path.unlink(missing_ok=True)
+        self._refresh_shadow_stats()
+        self.ctx.toast("影子数据已清空")
 
     def _build_provider_cards(self) -> None:
         f = self.ctx.cfg.features
@@ -362,6 +439,7 @@ class CapabilitiesPage(BasePage):
 
     def on_show(self) -> None:
         self._refresh_capability_providers()
+        self._refresh_shadow_stats()
         if not self.archive:
             self.count_label.setText("归档未开启")
             return
@@ -441,6 +519,12 @@ class CapabilitiesPage(BasePage):
         f.auto_search_interval = self.auto_interval.value()
         f.auto_search_target = self.auto_target.text().strip()
         f.auto_search_topics = self.auto_topics.text().strip()
+        self.ctx.cfg.social.enabled = self.social_check.isChecked()
+        self.ctx.cfg.social.summary_every = self.social_every.value()
+        self.ctx.cfg.social.idle_minutes = self.social_idle.value()
+        self.ctx.cfg.social.sample_seconds = self.social_sample.value()
+        self.ctx.cfg.social.retention_days = self.social_days.value()
+        self.ctx.cfg.social.max_mb = self.social_mb.value()
         f.search_provider = self.search_combo.currentData()
         if self.tavily_edit.text().strip():
             set_key(self.ctx.data_dir, "tavily", self.tavily_edit.text().strip())

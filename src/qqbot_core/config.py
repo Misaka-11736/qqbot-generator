@@ -86,6 +86,16 @@ class LogConfig:
 
 
 @dataclass
+class SocialConfig:
+    enabled: bool = False
+    summary_every: int = 40
+    idle_minutes: int = 15
+    sample_seconds: int = 20
+    retention_days: int = 7
+    max_mb: int = 100
+
+
+@dataclass
 class Config:
     bot_name: str = "小鲸鱼"
     admin_qq: list[int] = field(default_factory=list)
@@ -95,6 +105,7 @@ class Config:
     persona: PersonaConfig = field(default_factory=PersonaConfig)
     log: LogConfig = field(default_factory=LogConfig)
     features: FeatureConfig = field(default_factory=FeatureConfig)
+    social: SocialConfig = field(default_factory=SocialConfig)
     data_dir: Path = PROJECT_ROOT / "data"
     source: Path | None = None
 
@@ -212,6 +223,14 @@ class Config:
             f"voice_threshold = {self.features.voice_threshold}",
             f"image_threshold = {self.features.image_threshold}",
             f"search_threshold = {self.features.search_threshold}",
+            "",
+            "[social]",
+            f"enabled = {str(self.social.enabled).lower()}",
+            f"summary_every = {self.social.summary_every}",
+            f"idle_minutes = {self.social.idle_minutes}",
+            f"sample_seconds = {self.social.sample_seconds}",
+            f"retention_days = {self.social.retention_days}",
+            f"max_mb = {self.social.max_mb}",
             "",
             "[persona]",
             f"preset = {_q(self.persona.preset)}",
@@ -380,6 +399,14 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     cfg.persona.preset = _pick(persona, "preset", cfg.persona.preset)
     cfg.persona.default_iq = _pick(persona, "default_iq", cfg.persona.default_iq)
     cfg.persona.allow_everyone_set_iq = _pick(persona, "allow_everyone_set_iq", cfg.persona.allow_everyone_set_iq)
+
+    social = raw.get("social", {})
+    cfg.social.enabled = bool(_pick(social, "enabled", cfg.social.enabled))
+    cfg.social.summary_every = max(5, min(200, int(_pick(social, "summary_every", cfg.social.summary_every))))
+    cfg.social.idle_minutes = max(1, min(180, int(_pick(social, "idle_minutes", cfg.social.idle_minutes))))
+    cfg.social.sample_seconds = max(5, min(600, int(_pick(social, "sample_seconds", cfg.social.sample_seconds))))
+    cfg.social.retention_days = max(1, min(7, int(_pick(social, "retention_days", cfg.social.retention_days))))
+    cfg.social.max_mb = max(20, min(100, int(_pick(social, "max_mb", cfg.social.max_mb))))
 
     log = raw.get("log", {})
     cfg.log.level = _pick(log, "level", cfg.log.level)

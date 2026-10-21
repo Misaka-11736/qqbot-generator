@@ -28,6 +28,7 @@ from .persona import PRESETS, build_system_prompt, load_preset, style_of
 from .plugins import PluginManager
 from .providers import get as get_provider
 from .semantic import describe as describe_plan
+from .social import ShadowSocial
 from .tools import ToolError, brave_image, brave_search, download, duckduckgo_search, make_card, make_file, tavily_search
 from .util import RateLimiter, clean_reply, split_text
 from .vision import caption_frames, look_at_frames, looks_like_image_question
@@ -71,6 +72,7 @@ class Engine:
         self._cache_task: asyncio.Task | None = None
         self._last_tasks: dict[str, dict] = {}
         self._summary_counts: dict[str, int] = {}
+        self.social = ShadowSocial(lambda: self.cfg, lambda: self.llm, cfg.data_dir)
         self._config_task: asyncio.Task | None = None
         self._llm_signature = (
             cfg.llm.provider_id,
@@ -224,6 +226,11 @@ class Engine:
                 log.warning("语音识别失败：%s", exc)
                 await self._deliver(incoming, f"这段语音我没听清：{exc}")
                 return
+        if incoming.is_group:
+            try:
+                self.social.observe(incoming, text)
+            except Exception as exc:
+                log.debug("[shadow] 记录失败：%s", exc)
         if incoming.is_group and not incoming.at_me and incoming.reply_id not in self._sent_set:
             if self.cfg.chat.address_awareness and not await self._semantic_connected(incoming, text):
                 return
