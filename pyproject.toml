@@ -1,6 +1,6 @@
 [project]
 name = "qqbot-generator"
-version = "3.8.6"
+version = "3.8.7"
 description = "QQ Bot生成器：NapCat + OneBot + LLM 的 Windows 桌面客户端"
 readme = "README.md"
 requires-python = ">=3.11"

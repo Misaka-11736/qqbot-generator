@@ -1050,7 +1050,7 @@ class Engine:
             try:
                 raw = await self.llm.complete(messages, temperature=temperature, max_tokens=max_tokens)
                 reply = self._de_assistant(clean_reply(raw))
-                reply = re.sub(r"(对方|用户|提问者|提问的人)", "你", reply)
+                reply = re.sub(r"(对方|提问者|提问的人)", "你", reply)
                 if reply:
                     return reply[:max_chars]
                 log.warning("[persona] %s 重写为空（第 %s 次）", kind, attempt + 1)
