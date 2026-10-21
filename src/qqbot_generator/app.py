@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QPoint, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPalette
@@ -125,9 +126,17 @@ class MainWindow(QMainWindow):
         ctx.process.message.connect(self.toast.show_message)
         ctx.logbus.line.connect(self._on_log_line)
 
+        self._update_tag = ""
+        self._update_url = ""
+        self._notified_tag = ""
+        self._last_update_check = 0.0
         self._build_tray()
         QTimer.singleShot(2500, self._auto_diagnose)
         QTimer.singleShot(3000, lambda: self._check_updates(False))
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(60 * 60 * 1000)
+        self._update_timer.timeout.connect(lambda: self._check_updates(False))
+        self._update_timer.start()
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(2000)
         self._status_timer.timeout.connect(self._sync_napcat_status)
@@ -342,6 +351,8 @@ class MainWindow(QMainWindow):
         if not self._dwm_done:
             self._dwm_done = True
             QTimer.singleShot(60, self._apply_dwm)
+        if time.monotonic() - getattr(self, "_last_update_check", 0.0) > 15 * 60:
+            QTimer.singleShot(800, lambda: self._check_updates(False))
 
     def _apply_dwm(self) -> None:
         if sys.platform != "win32":
@@ -409,6 +420,7 @@ class MainWindow(QMainWindow):
         stop.triggered.connect(lambda: self.ctx.process.stop())
         update_action = QAction("检查更新", self)
         update_action.triggered.connect(lambda: self._check_updates(True))
+        self._update_action = update_action
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self._quit)
         menu.addAction(show)
@@ -438,29 +450,53 @@ class MainWindow(QMainWindow):
         checker = getattr(self, "_update_checker", None)
         if checker is not None and checker.isRunning():
             return
+        self._last_update_check = time.monotonic()
         self._manual_update = manual
+        if manual:
+            self._notified_tag = ""
         self._update_checker = UpdateChecker(paths.APP_VERSION)
         self._update_checker.result.connect(self._on_update_result)
         self._update_checker.start()
 
     def _on_update_result(self, status: str, tag: str, url: str) -> None:
         if status == "new":
-            box = QMessageBox(self)
-            box.setWindowTitle("发现新版本")
-            box.setText(f"新版本 {tag} 可用，当前是 v{paths.APP_VERSION}。")
-            box.setInformativeText("是否打开 GitHub Release 下载安装包？")
-            open_btn = box.addButton("去下载", QMessageBox.ButtonRole.AcceptRole)
-            box.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
-            box.exec()
-            if box.clickedButton() is open_btn and url:
-                QDesktopServices.openUrl(QUrl(url))
+            self._update_tag = tag
+            self._update_url = url
+            if hasattr(self, "_update_action"):
+                self._update_action.setText(f"新版本 {tag} 可用")
+            self.tray.setToolTip(f"{paths.APP_TITLE} · 新版本 {tag} 可用")
+            if not self.isVisible() or self.isMinimized():
+                self.tray.showMessage(
+                    f"发现新版本 {tag}",
+                    f"当前 v{paths.APP_VERSION}，双击托盘或打开 App 查看。",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    6000,
+                )
+            else:
+                self._prompt_update()
         elif getattr(self, "_manual_update", False):
             self.toast.show_message("已经是最新版本" if status == "latest" else "检查更新失败：网络或 GitHub 接口不可用")
+
+    def _prompt_update(self) -> None:
+        if not self._update_tag or self._notified_tag == self._update_tag:
+            return
+        self._notified_tag = self._update_tag
+        box = QMessageBox(self)
+        box.setWindowTitle("发现新版本")
+        box.setText(f"新版本 {self._update_tag} 可用，当前是 v{paths.APP_VERSION}。")
+        box.setInformativeText("是否打开 GitHub Release 下载安装包？")
+        open_btn = box.addButton("去下载", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_btn and self._update_url:
+            QDesktopServices.openUrl(QUrl(self._update_url))
 
     def _restore(self) -> None:
         self.showNormal()
         self.raise_()
         self.activateWindow()
+        if self._update_tag:
+            QTimer.singleShot(300, self._prompt_update)
 
     def _quit(self) -> None:
         self.ctx.process.shutdown()
