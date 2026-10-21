@@ -81,6 +81,7 @@ python run.py
 | NapCat | 检测/下载/配置/启动 NapCat，打开 WebUI |
 | 试聊 | 不登录 QQ 的本地聊天窗口 |
 | 日志 | 实时跟随 `logs/bot.log` |
+| 诊断 | 自动检查环境、QQ、NapCat、端口、Provider、日志，并提供修复按钮 |
 | 设置 | 自检、数据目录、导入导出、开机自启 |
 | 关于 | 版本、链接、致谢与免责声明 |
 

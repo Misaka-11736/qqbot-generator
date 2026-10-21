@@ -262,8 +262,11 @@ def check_environment(folder: Path) -> tuple[bool, str]:
         direct = root / "resources" / "app" / "loadNapCat.js"
         if direct.is_file():
             return True, ""
-        versions = sorted(root.glob("versions/*/resources/app/loadNapCat.js"))
-        if versions:
+        latest = sorted(
+            item for item in root.glob("versions/*")
+            if item.is_dir() and (item / "resources" / "app").is_dir()
+        )
+        if latest and (latest[-1] / "resources" / "app" / "loadNapCat.js").is_file():
             return True, ""
     version_dirs = []
     for root in roots:
@@ -278,3 +281,65 @@ def check_environment(folder: Path) -> tuple[bool, str]:
         "3. 或重新安装与当前 QQ 版本匹配的 NapCat；\n"
         "4. 把 QQ 和 NapCat 目录加入杀软排除。"
     )
+
+
+def qq_roots() -> list[Path]:
+    return _qq_roots()
+
+
+def qq_versions() -> list[Path]:
+    found: list[Path] = []
+    for root in qq_roots():
+        for item in sorted(root.glob("versions/*")):
+            if item.is_dir() and (item / "resources" / "app").is_dir():
+                found.append(item)
+    return found
+
+
+def target_qq_version(folder: Path) -> str:
+    try:
+        data = json.loads((folder / "qqnt.json").read_text(encoding="utf-8"))
+        return str(data.get("version") or "")
+    except Exception:
+        return ""
+
+
+def loader_target(folder: Path) -> Path | None:
+    versions = qq_versions()
+    if not versions:
+        return None
+    target_dir = versions[-1] / "resources" / "app"
+    return target_dir / "loadNapCat.js" if target_dir.is_dir() else None
+
+
+def install_loader(folder: Path) -> tuple[bool, str]:
+    source = folder / "loadNapCat.js"
+    if not source.is_file():
+        return False, "NapCat 包里没有 loadNapCat.js，需重新下载完整包。"
+    target = loader_target(folder)
+    if target is None:
+        return False, "没找到 QQ 版本目录，无法复制 loadNapCat.js。"
+    if target.parent.is_dir() and target.is_file():
+        return True, "loadNapCat.js 已存在，无需复制。"
+    code = (
+        f"Copy-Item -LiteralPath '{source}' -Destination '{target}' -Force; "
+        f"if (Test-Path -LiteralPath '{target}') {{ exit 0 }} else {{ exit 1 }}"
+    )
+    encoded = __import__("base64").b64encode(code.encode("utf-16-le")).decode("ascii")
+    try:
+        import subprocess
+
+        outer = (
+            "$p=Start-Process powershell -Verb RunAs -ArgumentList "
+            f"'-NoProfile','-EncodedCommand','{encoded}' -PassThru -Wait; exit $p.ExitCode"
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", outer],
+            capture_output=True,
+            timeout=180,
+        )
+        if result.returncode != 0 or not target.is_file():
+            return False, "复制失败：UAC 被取消，或没有写入权限。"
+        return True, f"已复制到 {target}"
+    except Exception as exc:
+        return False, f"复制失败：{exc}"

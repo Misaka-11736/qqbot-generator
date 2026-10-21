@@ -5,6 +5,13 @@
 - 修复机器人进程退出后 GUI 仍显示“运行中”的状态残留；
 - 人格卡切换立即写入当前 preset，不再要等保存。
 
+## 3.8.3 — 2026-10-21
+
+- 新增「诊断」页：检查数据目录、QQ 版本、NapCat、loadNapCat.js、OneBot 端口、Provider、能力 Key 和日志；
+- 启动后自动诊断一次，有问题只提示不打断；
+- 安全项自动修复；loadNapCat.js 复制走 UAC 按钮，不自动重启 QQ；
+- 修复 QQ versions 下把 setting.json 误当版本目录的 bug。
+
 ## 3.8.2 — 2026-10-21
 
 - 模型页只负责文字聊天 Provider；能力页接管看图/语音/搜索绑定；

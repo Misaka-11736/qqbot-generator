@@ -126,6 +126,7 @@ class MainWindow(QMainWindow):
         ctx.logbus.line.connect(self._on_log_line)
 
         self._build_tray()
+        QTimer.singleShot(2500, self._auto_diagnose)
         QTimer.singleShot(3000, lambda: self._check_updates(False))
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(2000)
@@ -423,6 +424,15 @@ class MainWindow(QMainWindow):
             lambda reason: self._restore() if reason == QSystemTrayIcon.ActivationReason.DoubleClick else None
         )
         self.tray.show()
+
+    def _auto_diagnose(self) -> None:
+        page = self.pages.get("diagnostics")
+        if page is None:
+            return
+        try:
+            page.run_checks(quiet=True)
+        except Exception:
+            pass
 
     def _check_updates(self, manual: bool) -> None:
         checker = getattr(self, "_update_checker", None)

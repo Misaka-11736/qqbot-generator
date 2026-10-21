@@ -7,6 +7,7 @@ from .base import BasePage
 from .bot import BotPage
 from .capabilities import CapabilitiesPage
 from .chat import ChatPage
+from .diagnostics import DiagnosticsPage
 from .home import HomePage
 from .logs import LogsPage
 from .model import ModelPage
@@ -24,6 +25,7 @@ PAGES: list[type[BasePage]] = [
     NapCatPage,
     ChatPage,
     LogsPage,
+    DiagnosticsPage,
     TutorialPage,
     SettingsPage,
     AboutPage,

@@ -50,6 +50,16 @@ DOC = """
 <h3>命令</h3>
 <p>群聊只保留 <code>/reset</code>，且只有管理员能执行；其他 <code>/xxx</code> 一律当普通聊天。</p>
 
+<h3>诊断与修复</h3>
+<p>启动后会自动跑一次诊断；也可以到「诊断」页点「开始检查」。绿色通过，黄色警告，红色失败。</p>
+<ul>
+<li>目录缺失、配置旧字段：自动修复；</li>
+<li>loadNapCat.js 缺失：点「复制并修复」，会弹 UAC，不会重启 QQ；</li>
+<li>NapCat 与 QQ 版本不一致：点「下载匹配版本」，不会自动安装未知版本；</li>
+<li>机器人没启动：点「启动机器人」；</li>
+<li>Provider/Key 问题：只提示，去模型页或能力页手动改，不自动切换。</li>
+</ul>
+
 <h3>常见问题</h3>
 <p><b>为什么它不回？</b> 先看「日志」里有没有 <code>[recv]</code>；没有是 OneBot 没连上；有 <code>[intent] chat</code> 是判定为聊天，被语义门槛拦了。</p>
 <p><b>为什么图片是空的？</b> 看 <code>[task]</code> 和 <code>[send]</code>；没配 Brave Key 或图片 CDN 被拦都会写原因。</p>
