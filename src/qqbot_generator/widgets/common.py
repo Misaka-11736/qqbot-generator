@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPoint, QPropertyAnimation, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
-    QListView,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -260,32 +261,99 @@ class WheelSlider(DragOnlySlider):
         event.accept()
 
 
+class _ComboPopup(QFrame):
+    """自绘下拉弹层：外层透明，内层圆角卡片，列表项独立圆角。"""
+
+    def __init__(self, combo: RoundedComboBox):
+        super().__init__(None, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
+        self.combo = combo
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(10, 10, 10, 10)
+        self.card = QFrame()
+        self.card.setObjectName("comboCard")
+        self.card.setStyleSheet(
+            "QFrame#comboCard{background:#FFFFFF;border:1px solid #DDE5F2;border-radius:12px;}"
+            "QListWidget{background:transparent;border:none;outline:none;padding:4px;}"
+            "QListWidget::item{min-height:32px;padding:4px 12px;margin:2px 4px;border-radius:8px;color:#1F2A44;}"
+            "QListWidget::item:selected{background:#FFE9E2;color:#C85A3F;}"
+        )
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(6, 6, 6, 6)
+        self.list = QListWidget(self.card)
+        self.list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list.itemClicked.connect(self._choose)
+        self.list.itemActivated.connect(self._choose)
+        card_layout.addWidget(self.list)
+        outer.addWidget(self.card)
+        shadow = QGraphicsDropShadowEffect(self.card)
+        shadow.setBlurRadius(24)
+        shadow.setOffset(0, 6)
+        shadow.setColor(QColor(20, 35, 60, 60))
+        self.card.setGraphicsEffect(shadow)
+        self.list.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj is self.list and event.type() == event.Type.KeyPress:
+            key = event.key()
+            if key == Qt.Key.Key_Escape:
+                self.close()
+                return True
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._choose(self.list.currentItem())
+                return True
+        return super().eventFilter(obj, event)
+
+    def _choose(self, item: QListWidgetItem | None) -> None:
+        if item is None:
+            return
+        self.combo.setCurrentIndex(self.list.row(item))
+        self.close()
+
+    def open_for(self, index: int) -> None:
+        self.list.clear()
+        for i in range(self.combo.count()):
+            item = QListWidgetItem(self.combo.itemText(i))
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            self.list.addItem(item)
+        self.list.setCurrentRow(max(0, index))
+        combo_pos = self.combo.mapToGlobal(QPoint(0, self.combo.height() + 4))
+        screen = QGuiApplication.screenAt(combo_pos) or QGuiApplication.primaryScreen()
+        width = max(self.combo.width(), 220)
+        height = min(360, self.list.count() * 38 + 28)
+        if screen is not None:
+            area = screen.availableGeometry()
+            x = min(combo_pos.x(), area.right() - width - 12)
+            y = combo_pos.y()
+            if y + height > area.bottom():
+                y = self.combo.mapToGlobal(QPoint(0, 0)).y() - height - 4
+            self.setGeometry(x, max(area.top(), y), width, height)
+        else:
+            self.setGeometry(combo_pos.x(), combo_pos.y(), width, height)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.list.setFocus()
+        self.list.scrollToItem(self.list.currentItem())
+
+
 class RoundedComboBox(QComboBox):
-    """全局统一：透明弹层 + 圆角列表 + 阴影，避免原生方角。"""
+    """全局统一：完全自绘弹层，避开原生容器的黑边和方角。"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        view = QListView(self)
-        view.setFrameShape(QFrame.Shape.NoFrame)
-        view.setStyleSheet(
-            "QListView{background:#FFFFFF;border:1px solid #DDE5F2;border-radius:12px;"
-            "padding:5px;color:#1F2A44;outline:none;}"
-            "QListView::item{min-height:28px;padding:3px 10px;border-radius:8px;}"
-            "QListView::item:selected{background:#FFE9E2;color:#C85A3F;}"
-        )
-        self.setView(view)
-        window = view.window()
-        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        window.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
-        effect = QGraphicsDropShadowEffect(window)
-        effect.setBlurRadius(24)
-        effect.setOffset(0, 6)
-        effect.setColor(QColor(20, 35, 60, 60))
-        window.setGraphicsEffect(effect)
+        self._popup: _ComboPopup | None = None
 
     def showPopup(self) -> None:
-        super().showPopup()
-        window = self.view().window()
-        window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        if self.count() == 0:
+            return
+        if self._popup is None:
+            self._popup = _ComboPopup(self)
+        self._popup.open_for(self.currentIndex())
+
+    def hidePopup(self) -> None:
+        if self._popup is not None:
+            self._popup.close()
 
 
