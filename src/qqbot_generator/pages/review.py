@@ -168,7 +168,8 @@ class ReviewPage(BasePage):
             row = QWidget()
             layout = QHBoxLayout(row)
             layout.setContentsMargins(0, 0, 0, 0)
-            label = QLabel(f"<b>{rule.get('category')}</b>　{rule.get('text')}")
+            ev = ", ".join(f"#{x}" for x in (rule.get("evidence") or [])[:6])
+            label = QLabel(f"<b>{rule.get('category')}</b>　{rule.get('text')}<br/><span style='color:#6E7FA3'>证据：{ev or '人工标注'}</span>")
             label.setWordWrap(True)
             layout.addWidget(label, 1)
             rid = rule.get("id")
@@ -184,10 +185,10 @@ class ReviewPage(BasePage):
             label = QLabel(f"{rule.get('text')}　（{rule.get('category')}，至 {expires}）")
             label.setWordWrap(True)
             self.active_box.addWidget(label)
-        version = int(self.rules.data.get("version") or 0)
-        if version:
-            back = small_button("回滚到上一版", "secondary")
-            back.clicked.connect(lambda: self._rollback(version - 1))
+        previous = self.rules.previous_version()
+        if previous is not None:
+            back = small_button(f"回滚到版本 {previous}", "secondary")
+            back.clicked.connect(lambda: self._rollback(previous))
             self.active_box.addWidget(back)
 
     def _rollback(self, version: int) -> None:

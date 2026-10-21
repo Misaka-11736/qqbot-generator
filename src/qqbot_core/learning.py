@@ -259,6 +259,14 @@ class RuleStore:
                 return True
         return False
 
+    def previous_version(self) -> int | None:
+        history = self.data.get("history", [])
+        return int(history[-2].get("version") or 0) if len(history) >= 2 else None
+
+    def rollback_previous(self) -> bool:
+        version = self.previous_version()
+        return self.rollback(version) if version is not None else False
+
     def rollback(self, version: int) -> bool:
         with self._lock:
             target = next((h for h in self.data.get("history", []) if int(h.get("version") or 0) == version), None)
