@@ -105,3 +105,84 @@ def wants_voice(text: str) -> bool:
     return bool(
         __import__("re").search(r"(用语音|发条语音|发个语音|语音说|念一下|读一下|说给我听|来段语音)", text or "")
     )
+
+
+class VoiceError(RuntimeError):
+    pass
+
+
+def _cloud_endpoint(base: str, path: str) -> str:
+    base = base.rstrip("/")
+    if base.endswith("/chat/completions"):
+        base = base[: -len("/chat/completions")]
+    return base + path
+
+
+def _cloud_error(exc: Exception, action: str) -> VoiceError:
+    detail = str(exc)
+    if "401" in detail:
+        return VoiceError(f"{action} Key 无效或已过期")
+    if "402" in detail:
+        return VoiceError(f"{action} 账户余额不足")
+    if "404" in detail:
+        return VoiceError(f"{action} 模型名或接口地址不对")
+    if "429" in detail:
+        return VoiceError(f"{action} 请求太频繁，稍后再试")
+    return VoiceError(f"{action}失败：{detail[:120]}")
+
+
+def transcribe_cloud(src: Path, base_url: str, key: str, model: str) -> str:
+    wav = to_wav(src, src.with_suffix(".16k.wav"))
+    boundary = "----qqbot" + str(abs(hash(str(wav))) % 10_000_000)
+    parts = []
+    for name, value in (("model", model), ("language", "zh")):
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode())
+    parts.append(
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n"
+        "Content-Type: audio/wav\r\n\r\n".encode() + wav.read_bytes() + b"\r\n"
+    )
+    parts.append(f"--{boundary}--\r\n".encode())
+    req = urllib.request.Request(
+        _cloud_endpoint(base_url, "/audio/transcriptions"),
+        data=b"".join(parts),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = __import__("json").loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception as exc:
+        raise _cloud_error(exc, "云端语音识别") from exc
+    return str(data.get("text") or "").strip()
+
+
+def synthesize_cloud(text: str, out_dir: Path, base_url: str, key: str, model: str, voice: str) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload = __import__("json").dumps(
+        {"model": model, "input": text[:500], "voice": voice or "alloy", "response_format": "mp3"},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        _cloud_endpoint(base_url, "/audio/speech"),
+        data=payload,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            audio = resp.read(20 * 1024 * 1024)
+    except Exception as exc:
+        raise _cloud_error(exc, "云端语音合成") from exc
+    mp3 = out_dir / f"cloud-tts-{abs(hash(text)) % 10_000_000}.mp3"
+    mp3.write_bytes(audio)
+    ffmpeg = ffmpeg_path()
+    if ffmpeg is None:
+        return mp3
+    amr = mp3.with_suffix(".amr")
+    subprocess.run(
+        [str(ffmpeg), "-y", "-i", str(mp3), "-ar", "8000", "-ac", "1", "-c:a", "libopencore_amrnb", "-b:a", "12.2k", str(amr)],
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    return amr if amr.is_file() and amr.stat().st_size > 200 else mp3

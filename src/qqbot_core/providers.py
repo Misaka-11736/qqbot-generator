@@ -13,6 +13,9 @@ class Provider:
     chat_model: str
     capabilities: tuple[str, ...] = ("chat",)
     vision_model: str = ""
+    asr_model: str = ""
+    tts_model: str = ""
+    tts_voice: str = ""
     key_url: str = ""
     note: str = ""
     models: tuple[str, ...] = field(default_factory=tuple)
@@ -34,7 +37,8 @@ PROVIDERS: dict[str, Provider] = {
     ),
     "siliconflow": Provider(
         "siliconflow", "SiliconFlow", "https://api.siliconflow.cn/v1", "Qwen/Qwen2.5-72B-Instruct",
-        ("chat", "vision"), vision_model="Qwen/Qwen2.5-VL-72B-Instruct",
+        ("chat", "vision", "asr", "tts"), vision_model="Qwen/Qwen2.5-VL-72B-Instruct",
+        asr_model="FunAudioLLM/SenseVoiceSmall", tts_model="FunAudioLLM/CosyVoice2-0.5B", tts_voice="anna",
         key_url="https://cloud.siliconflow.cn/account/ak",
         note="聚合多家模型，文本/视觉可选。",
         models=("Qwen/Qwen2.5-72B-Instruct", "deepseek-ai/DeepSeek-V3"),
@@ -48,14 +52,16 @@ PROVIDERS: dict[str, Provider] = {
     ),
     "openai": Provider(
         "openai", "OpenAI", "https://api.openai.com/v1", "gpt-4o-mini",
-        ("chat", "vision"), vision_model="gpt-4o-mini",
+        ("chat", "vision", "asr", "tts"), vision_model="gpt-4o-mini",
+        asr_model="whisper-1", tts_model="gpt-4o-mini-tts", tts_voice="alloy",
         key_url="https://platform.openai.com/api-keys",
         note="文本/视觉都支持；国内网络可能需代理。",
         models=("gpt-4o-mini", "gpt-4o"),
     ),
     "groq": Provider(
         "groq", "Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile",
-        ("chat",), key_url="https://console.groq.com/keys",
+        ("chat", "asr", "tts"), key_url="https://console.groq.com/keys",
+        asr_model="whisper-large-v3", tts_model="playai-tts", tts_voice="Fritz-PlayAI",
         note="速度极快，暂未启用视觉模型。",
         models=("llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
     ),

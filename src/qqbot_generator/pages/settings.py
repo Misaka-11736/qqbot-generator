@@ -133,7 +133,7 @@ class SettingsPage(BasePage):
         row.addWidget(clear_memory)
         row.addStretch(1)
         card.add_layout(row)
-        card.add(_hint("config.toml 里存着 API Key，导出的文件别发给别人。"))
+        card.add(_hint("API Key 已 DPAPI 加密存 secrets.json，不写进 config.toml。"))
         self.add(card)
 
     def _export(self) -> None:
@@ -275,7 +275,7 @@ class SettingsPage(BasePage):
         reset.setCursor(Qt.CursorShape.PointingHandCursor)
         reset.clicked.connect(self._reset_config)
         row.addWidget(reset)
-        hint = _hint("会删掉 config.toml 并重建默认配置，Key 和自定义都会丢。")
+        hint = _hint("会删掉 config.toml 并重建默认配置；已加密的 Key 仍在 secrets.json，可在模型页重新选择 Provider。")
         hint.setWordWrap(True)
         row.addWidget(hint, 1)
         card.add_layout(row)

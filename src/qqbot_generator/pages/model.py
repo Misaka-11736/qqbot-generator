@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 
 from qqbot_core.keyvault import get_key, set_key
 from qqbot_core.llm import ChatLLM, friendly_error
+from qqbot_core.providers import choices as provider_choices
+from qqbot_core.providers import get as get_provider
 
 from ..theme import COLORS
 from ..widgets.common import Card, Field, small_button
@@ -81,7 +83,7 @@ class ModelPage(BasePage):
         title = QLabel("服务商")
         title.setObjectName("cardTitle")
         card.add(title)
-        card.add(_hint("点一下快捷填充，再改成自己的 Key 即可。"))
+        card.add(_hint("选文字 Provider 会自动填地址和模型；也可以手动改，再填这家 Provider 的 Key。"))
 
         chips = QHBoxLayout()
         chips.setSpacing(8)
@@ -96,25 +98,31 @@ class ModelPage(BasePage):
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(14)
 
+        self.chat_provider_combo = QComboBox()
+        for item in provider_choices():
+            self.chat_provider_combo.addItem(item.name, item.id)
+        self.chat_provider_combo.currentIndexChanged.connect(self._provider_changed)
+        grid.addWidget(Field("文字 Provider", self.chat_provider_combo), 0, 0)
+
         self.provider_combo = QComboBox()
         self.provider_combo.addItem("自动（有 Key 就用真模型）", "auto")
         self.provider_combo.addItem("强制在线模型", "openai")
         self.provider_combo.addItem("强制离线大脑", "mock")
-        grid.addWidget(Field("调用方式", self.provider_combo), 0, 0)
+        grid.addWidget(Field("调用方式", self.provider_combo), 0, 1)
 
         self.model_edit = QLineEdit()
         self.model_edit.setPlaceholderText("deepseek-chat")
-        grid.addWidget(Field("模型名", self.model_edit), 0, 1)
+        grid.addWidget(Field("模型名", self.model_edit), 1, 0)
 
         self.base_edit = QLineEdit()
         self.base_edit.setPlaceholderText("https://api.deepseek.com/v1")
-        grid.addWidget(Field("接口地址", self.base_edit, "填到 /v1 为止，程序自动补 /chat/completions"), 1, 0, 1, 2)
+        grid.addWidget(Field("接口地址", self.base_edit, "填到 /v1 为止，程序自动补 /chat/completions"), 1, 1)
         card.add_layout(grid)
         self.add(card)
 
     def _build_params(self) -> None:
         card = Card()
-        title = QLabel("密钥与采样")
+        title = QLabel("密钥与采样（仅文字 Provider）")
         title.setObjectName("cardTitle")
         card.add(title)
 
@@ -136,11 +144,11 @@ class ModelPage(BasePage):
         eye.setFixedWidth(64)
         eye.toggled.connect(lambda on: self.key_edit.setEchoMode(QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password))
         key_layout.addWidget(eye)
-        grid.addWidget(Field("API Key", key_box, "只存在本机 config.toml，不会外传"), 0, 0, 1, 2)
+        grid.addWidget(Field("API Key", key_box, "DPAPI 加密存 secrets.json，不写进 config.toml，不会外传"), 0, 0, 1, 2)
 
         self.env_edit = QLineEdit()
         self.env_edit.setPlaceholderText("QQBOT_API_KEY")
-        grid.addWidget(Field("环境变量名", self.env_edit, "Key 也可以放环境变量，程序优先读输入框"), 1, 0)
+        grid.addWidget(Field("环境变量名", self.env_edit, "Key 也可以放环境变量；已保存的加密 Key 和输入框优先"), 1, 0)
 
         self.timeout_spin = QSpinBox()
         self.timeout_spin.setRange(5, 300)
@@ -187,6 +195,8 @@ class ModelPage(BasePage):
 
     def load(self) -> None:
         cfg = self.ctx.cfg
+        idx_provider = self.chat_provider_combo.findData(cfg.llm.provider_id)
+        self.chat_provider_combo.setCurrentIndex(idx_provider if idx_provider >= 0 else 0)
         index = self.provider_combo.findData(cfg.llm.provider)
         self.provider_combo.setCurrentIndex(max(index, 0))
         self.base_edit.setText(cfg.llm.base_url)
@@ -204,8 +214,21 @@ class ModelPage(BasePage):
         else:
             self.result.setText(f"当前：{cfg.llm.model}")
 
+    def _provider_changed(self) -> None:
+        provider = get_provider(self.chat_provider_combo.currentData())
+        if provider is None:
+            return
+        self.base_edit.setText(provider.base_url)
+        self.model_edit.setText(provider.chat_model)
+        self.key_edit.clear()
+        saved = bool(get_key(self.ctx.data_dir, f"llm_{provider.id}"))
+        self.key_edit.setPlaceholderText("已保存，留空不修改" if saved else "粘贴这家 Provider 的 Key")
+
     def _fill_preset(self, name: str) -> None:
         provider_id, base, model = PRESETS[name]
+        idx = self.chat_provider_combo.findData(provider_id)
+        if idx >= 0:
+            self.chat_provider_combo.setCurrentIndex(idx)
         self.ctx.cfg.llm.provider_id = provider_id
         self.base_edit.setText(base)
         self.model_edit.setText(model)
@@ -230,6 +253,7 @@ class ModelPage(BasePage):
             return
         cfg = self.ctx.cfg
         cfg.llm.provider = self.provider_combo.currentData()
+        cfg.llm.provider_id = self.chat_provider_combo.currentData()
         cfg.llm.base_url = base
         cfg.llm.model = model
         if key:

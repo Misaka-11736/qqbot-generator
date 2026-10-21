@@ -31,8 +31,8 @@ from .semantic import describe as describe_plan
 from .tools import ToolError, brave_image, brave_search, download, duckduckgo_search, make_card, make_file, tavily_search
 from .util import RateLimiter, clean_reply, split_text
 from .vision import caption_frames, look_at_frames, looks_like_image_question
+from .voice import VoiceError, synthesize, synthesize_cloud, transcribe, transcribe_cloud, voice_sources, wants_voice
 from .voice import prepare as prepare_voice
-from .voice import synthesize, transcribe, voice_sources, wants_voice
 
 log = logging.getLogger("qqbot")
 
@@ -216,7 +216,7 @@ class Engine:
             await self._deliver(incoming, "我听听…")
             try:
                 src = await asyncio.to_thread(prepare_voice, voices[0], self.cfg.data_dir / "cache" / "voice")
-                text = await asyncio.to_thread(transcribe, src, self.features.voice_model)
+                text = await self._transcribe_voice(src)
                 log.info("语音识别：%s", text[:80])
                 if incoming.is_group:
                     incoming.at_me = True
@@ -251,7 +251,7 @@ class Engine:
             if spoken:
                 await self._deliver(incoming, "等我清清嗓子…")
                 try:
-                    path = await synthesize(spoken, self.cfg.data_dir / "cache" / "voice", self.features.voice_name)
+                    path = await self._synthesize_voice(spoken)
                     await self._send_voice(incoming, str(path))
                 except Exception as exc:
                     await self._deliver(incoming, f"语音合成失败：{exc}")
@@ -312,13 +312,19 @@ class Engine:
 
     async def _vision_reply(self, incoming: Incoming, text: str, media: list[dict], search: bool = False) -> None:
         log.info("识图/媒体触发：%s（%s）", (text or "无文字")[:60], ",".join(m["kind"] for m in media))
-        provider = get_provider(self.cfg.llm.provider_id)
+        vision_id = self.features.vision_provider or self.cfg.llm.provider_id
+        provider = get_provider(vision_id)
         if provider is None or "vision" not in provider.capabilities:
-            await self._deliver(incoming, "当前 API Provider 不支持看图，去「能力」页换一个支持视觉的。")
+            await self._deliver(incoming, "当前视觉 Provider 不支持看图，去「能力」页换一个支持视觉的。")
             return
-        key = self.cfg.resolve_api_key() or ("ollama" if provider.id == "ollama" else "")
+        if self.features.vision_provider:
+            key = get_key(self.cfg.data_dir, f"cap_vision_{provider.id}")
+        else:
+            key = self.cfg.resolve_api_key()
+        if not key and provider.id == "ollama":
+            key = "ollama"
         if not key:
-            await self._deliver(incoming, "看图需要当前 Provider 的 API Key，去「能力」页填一下。")
+            await self._deliver(incoming, "看图 Provider 还没填 Key，去「能力」页填一下。")
             return
         vision_base = provider.base_url
         vision_model = provider.vision_model or self.features.vision_model
@@ -695,6 +701,44 @@ class Engine:
                     media += media_sources(content)
         return media
 
+    def _cap_key(self, kind: str, provider_id: str) -> str:
+        key = get_key(self.cfg.data_dir, f"cap_{kind}_{provider_id}")
+        if not key and provider_id == self.cfg.llm.provider_id:
+            key = self.cfg.resolve_api_key()
+        return key
+
+    async def _transcribe_voice(self, src: Path) -> str:
+        provider_id = self.features.asr_provider or "local"
+        if provider_id == "local":
+            return await asyncio.to_thread(transcribe, src, self.features.voice_model)
+        provider = get_provider(provider_id)
+        if provider is None or "asr" not in provider.capabilities:
+            raise VoiceError("当前语音识别 Provider 不支持 ASR，去「能力」页换一个")
+        key = self._cap_key("asr", provider.id)
+        if not key:
+            raise VoiceError("语音识别 Provider 还没填 Key")
+        model = self.features.asr_model or provider.asr_model
+        text = await asyncio.to_thread(transcribe_cloud, src, provider.base_url, key, model)
+        if not text:
+            raise VoiceError("语音识别结果为空，可能音频格式不支持")
+        return text
+
+    async def _synthesize_voice(self, text: str) -> Path:
+        provider_id = self.features.tts_provider or "edge"
+        if provider_id == "edge":
+            return await synthesize(text, self.cfg.data_dir / "cache" / "voice", self.features.voice_name)
+        provider = get_provider(provider_id)
+        if provider is None or "tts" not in provider.capabilities:
+            raise VoiceError("当前语音合成 Provider 不支持 TTS，去「能力」页换一个")
+        key = self._cap_key("tts", provider.id)
+        if not key:
+            raise VoiceError("语音合成 Provider 还没填 Key")
+        model = self.features.tts_model or provider.tts_model
+        voice = self.features.tts_voice or provider.tts_voice or "alloy"
+        return await asyncio.to_thread(
+            synthesize_cloud, text, self.cfg.data_dir / "cache" / "voice", provider.base_url, key, model, voice
+        )
+
     async def _send_voice(self, incoming: Incoming, path: str) -> None:
         if self.link is None:
             await self._deliver(incoming, f"[语音] {path}")
@@ -895,7 +939,7 @@ class Engine:
         if mode in ("voice", "image", "file") and self.link is not None:
             try:
                 if mode == "voice":
-                    path = await synthesize(joined, self.cfg.data_dir / "cache" / "voice", self.features.voice_name)
+                    path = await self._synthesize_voice(joined)
                     await self._send_voice(incoming, str(path))
                 elif mode == "image":
                     path = await self._image_for(text, joined)

@@ -28,7 +28,7 @@ from .base import BasePage
 class CapabilitiesPage(BasePage):
     key = "capabilities"
     title = "能力"
-    subtitle = "每个能力独立开关；Key 只存在本机，日志自动打码"
+    subtitle = "按能力绑定 Provider；Key 加密存储，日志自动打码"
 
     def build(self) -> None:
         self.archive = Archive(self.ctx.data_dir / "archive.db") if self.ctx.cfg.features.archive else None
@@ -58,7 +58,7 @@ class CapabilitiesPage(BasePage):
         title = QLabel("能力开关")
         title.setObjectName("cardTitle")
         switch.add(title)
-        switch.add(_hint("关掉后对应指令不再响应；归档关掉后 /总结 和分类都不可用。"))
+        switch.add(_hint("关掉后不会再执行对应任务；归档关掉后总结和分类都不可用。"))
         grid = QGridLayout()
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(10)
@@ -83,13 +83,13 @@ class CapabilitiesPage(BasePage):
         # v3.2 语音开关已并入上方网格
         switch.add_layout(grid)
         self.add(switch)
-        self._build_provider_card()
+        self._build_provider_cards()
 
         keys = Card()
         title = QLabel("API Key")
         title.setObjectName("cardTitle")
         keys.add(title)
-        keys.add(_hint("Brave 用于搜索；Provider Key 在上方「API Provider」卡片填写。Key 不会写进 config.toml。"))
+        keys.add(_hint("搜索 Key 在这里；看图/语音的独立 Key 在上方各自卡片。Key 加密保存，不写进 config.toml。"))
         row = QGridLayout()
         row.setHorizontalSpacing(16)
         row.setVerticalSpacing(12)
@@ -110,11 +110,6 @@ class CapabilitiesPage(BasePage):
         tavily_saved = bool(get_key(self.ctx.data_dir, "tavily"))
         self.tavily_edit.setPlaceholderText("已保存，留空则不修改" if tavily_saved else "Tavily API Key（可选）")
         row.addWidget(Field("Tavily Key", self.tavily_edit), 1, 0)
-        self.voice_combo = QComboBox()
-        self.voice_combo.addItems(["small", "base", "tiny"])
-        idx_voice = self.voice_combo.findText(f.voice_model)
-        if idx_voice >= 0:
-            self.voice_combo.setCurrentIndex(idx_voice)
         self.search_limit = QSpinBox()
         self.search_limit.setRange(1, 500)
         self.search_limit.setValue(f.search_daily_limit)
@@ -129,9 +124,6 @@ class CapabilitiesPage(BasePage):
         self.summary_limit.setValue(f.summary_max)
         self.summary_limit.setSingleStep(50)
         row.addWidget(Field("总结最多条数", self.summary_limit), 3, 1)
-        self.voice_name = QLineEdit(f.voice_name)
-        row.addWidget(Field("Edge-TTS 音色", self.voice_name), 2, 0)
-        row.addWidget(Field("Whisper 模型", self.voice_combo), 2, 1)
         keys.add_layout(row)
         self.add(keys)
 
@@ -215,7 +207,7 @@ class CapabilitiesPage(BasePage):
         use.add(
             _hint(
                 "直接说人话就行：@它 说「搜一下 今天的新闻」「总结最近 200 条」「下载 https://…」；"
-                "私聊不用 @，也不用加 /。斜杠指令仍然保留。"
+                "私聊不用 @。群里只保留管理员 /reset，其他斜杠按普通聊天。"
             )
         )
         self.add(use)
@@ -229,52 +221,147 @@ class CapabilitiesPage(BasePage):
         row.addWidget(save)
         self.set_footer(footer)
 
-    def _build_provider_card(self) -> None:
-        card = Card()
-        title = QLabel("API Provider")
+    def _build_provider_cards(self) -> None:
+        f = self.ctx.cfg.features
+        chat = Card()
+        title = QLabel("聊天 Provider")
         title.setObjectName("cardTitle")
-        card.add(title)
-        card.add(_hint("聊天和看图由同一家 Provider 提供；语音、搜索是独立能力，不受 Provider 限制。"))
-        row = QGridLayout()
-        row.setHorizontalSpacing(16)
-        row.setVerticalSpacing(10)
-        self.provider_combo = QComboBox()
-        for item in provider_choices():
-            self.provider_combo.addItem(item.name, item.id)
-        idx = self.provider_combo.findData(self.ctx.cfg.llm.provider_id)
-        self.provider_combo.setCurrentIndex(idx if idx >= 0 else 0)
-        row.addWidget(Field("提供商", self.provider_combo), 0, 0)
-        self.provider_key = QLineEdit()
-        self.provider_key.setEchoMode(QLineEdit.EchoMode.Password)
-        saved = bool(get_key(self.ctx.data_dir, f"llm_{self.ctx.cfg.llm.provider_id}"))
-        self.provider_key.setPlaceholderText("已保存，留空不修改" if saved else "粘贴这家 Provider 的 API Key")
-        row.addWidget(Field("API Key", self.provider_key), 0, 1)
-        self.provider_hint = QLabel("")
-        self.provider_hint.setObjectName("cardHint")
-        self.provider_hint.setWordWrap(True)
-        card.add_layout(row)
-        card.add(self.provider_hint)
-        self.add(card)
-        self.provider_combo.currentIndexChanged.connect(self._refresh_provider_ui)
-        self._refresh_provider_ui()
+        chat.add(title)
+        self.chat_provider_hint = QLabel("")
+        self.chat_provider_hint.setObjectName("cardHint")
+        self.chat_provider_hint.setWordWrap(True)
+        chat.add(self.chat_provider_hint)
+        self.add(chat)
 
-    def _refresh_provider_ui(self) -> None:
-        provider = get_provider(self.provider_combo.currentData())
-        if provider is None:
-            return
-        caps = "、".join({"chat": "聊天", "vision": "看图"}.get(c, c) for c in provider.capabilities)
-        self.provider_hint.setText(f"{provider.note}\n支持：{caps}　Key：{provider.key_url}")
-        saved = bool(get_key(self.ctx.data_dir, f"llm_{provider.id}") or (provider.id == "qwen" and get_key(self.ctx.data_dir, "qwen")))
-        self.provider_key.clear()
-        self.provider_key.setPlaceholderText("已保存，留空不修改" if saved else "粘贴这家 Provider 的 API Key")
-        if "vision" in self.checks:
-            ok = "vision" in provider.capabilities
-            self.checks["vision"].setEnabled(ok)
-            self.checks["vision"].setText("图片/视频/文件" if ok else "图片/视频/文件（Provider 不支持）")
-            if not ok:
-                self.checks["vision"].setChecked(False)
+        vision = Card()
+        title = QLabel("看图 Provider")
+        title.setObjectName("cardTitle")
+        vision.add(title)
+        vision.add(_hint("默认跟随聊天 Provider；聊天 Provider 不支持视觉时，可单独指定并填它的 Key。"))
+        vrow = QGridLayout()
+        vrow.setHorizontalSpacing(16)
+        vrow.setVerticalSpacing(10)
+        self.vision_combo = QComboBox()
+        self.vision_combo.addItem("跟随聊天 Provider", "")
+        for item in provider_choices():
+            if "vision" in item.capabilities:
+                self.vision_combo.addItem(item.name, item.id)
+        idx = self.vision_combo.findData(f.vision_provider)
+        self.vision_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        vrow.addWidget(Field("视觉 Provider", self.vision_combo), 0, 0)
+        self.vision_key = QLineEdit()
+        self.vision_key.setEchoMode(QLineEdit.EchoMode.Password)
+        vrow.addWidget(Field("独立 Key（跟随聊天时不用填）", self.vision_key), 0, 1)
+        vision.add_layout(vrow)
+        self.vision_hint = QLabel("")
+        self.vision_hint.setObjectName("cardHint")
+        self.vision_hint.setWordWrap(True)
+        vision.add(self.vision_hint)
+        self.add(vision)
+
+        voice = Card()
+        title = QLabel("语音 Provider")
+        title.setObjectName("cardTitle")
+        voice.add(title)
+        voice.add(_hint("本地 Whisper/Edge-TTS 不消耗 Token；云端走 OpenAI 兼容的 /audio/transcriptions 和 /audio/speech。"))
+        vgrid = QGridLayout()
+        vgrid.setHorizontalSpacing(16)
+        vgrid.setVerticalSpacing(10)
+        self.asr_combo = QComboBox()
+        self.asr_combo.addItem("本地 faster-whisper", "local")
+        for item in provider_choices():
+            if "asr" in item.capabilities:
+                self.asr_combo.addItem(item.name, item.id)
+        idx = self.asr_combo.findData(f.asr_provider)
+        self.asr_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        vgrid.addWidget(Field("语音识别", self.asr_combo), 0, 0)
+        self.voice_combo = QComboBox()
+        self.voice_combo.addItems(["small", "base", "tiny"])
+        idx_voice = self.voice_combo.findText(f.voice_model)
+        if idx_voice >= 0:
+            self.voice_combo.setCurrentIndex(idx_voice)
+        vgrid.addWidget(Field("本地 Whisper 模型", self.voice_combo), 0, 1)
+        self.asr_model = QLineEdit(f.asr_model)
+        self.asr_model.setPlaceholderText("云端 ASR 模型，留空用 Provider 默认")
+        vgrid.addWidget(Field("云端 ASR 模型", self.asr_model), 1, 0)
+        self.asr_key = QLineEdit()
+        self.asr_key.setEchoMode(QLineEdit.EchoMode.Password)
+        vgrid.addWidget(Field("ASR Key（本地不用填）", self.asr_key), 1, 1)
+
+        self.tts_combo = QComboBox()
+        self.tts_combo.addItem("本地 Edge-TTS", "edge")
+        for item in provider_choices():
+            if "tts" in item.capabilities:
+                self.tts_combo.addItem(item.name, item.id)
+        idx = self.tts_combo.findData(f.tts_provider)
+        self.tts_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        vgrid.addWidget(Field("语音合成", self.tts_combo), 2, 0)
+        self.voice_name = QLineEdit(f.voice_name)
+        vgrid.addWidget(Field("Edge-TTS 音色", self.voice_name), 2, 1)
+        self.tts_model = QLineEdit(f.tts_model)
+        self.tts_model.setPlaceholderText("云端 TTS 模型，留空用 Provider 默认")
+        vgrid.addWidget(Field("云端 TTS 模型", self.tts_model), 3, 0)
+        self.tts_voice = QLineEdit(f.tts_voice)
+        self.tts_voice.setPlaceholderText("云端 TTS 音色，如 alloy / Fritz-PlayAI")
+        vgrid.addWidget(Field("云端 TTS 音色", self.tts_voice), 3, 1)
+        self.tts_key = QLineEdit()
+        self.tts_key.setEchoMode(QLineEdit.EchoMode.Password)
+        vgrid.addWidget(Field("TTS Key（Edge 不用填）", self.tts_key), 4, 0)
+        voice.add_layout(vgrid)
+        self.voice_hint = QLabel("")
+        self.voice_hint.setObjectName("cardHint")
+        self.voice_hint.setWordWrap(True)
+        voice.add(self.voice_hint)
+        self.add(voice)
+
+        self.vision_combo.currentIndexChanged.connect(self._refresh_capability_providers)
+        self.asr_combo.currentIndexChanged.connect(self._refresh_capability_providers)
+        self.tts_combo.currentIndexChanged.connect(self._refresh_capability_providers)
+        self._refresh_capability_providers()
+
+    def _refresh_capability_providers(self) -> None:
+        chat_provider = get_provider(self.ctx.cfg.llm.provider_id)
+        if self.chat_provider_hint is not None:
+            self.chat_provider_hint.setText(
+                f"当前聊天：{chat_provider.name if chat_provider else self.ctx.cfg.llm.provider_id} / "
+                f"{self.ctx.cfg.llm.model}。聊天 Provider 在「模型」页修改，这里只读。"
+            )
+        vision_id = self.vision_combo.currentData() or self.ctx.cfg.llm.provider_id
+        vision_ok = get_provider(vision_id) and "vision" in get_provider(vision_id).capabilities
+        self.vision_key.setEnabled(bool(self.vision_combo.currentData()))
+        if self.vision_combo.currentData():
+            vkey = get_key(self.ctx.data_dir, f"cap_vision_{vision_id}")
+            self.vision_key.setPlaceholderText("已保存，留空不修改" if vkey else "粘贴这家视觉 Provider 的 Key")
+        self.checks["vision"].setEnabled(bool(vision_ok))
+        self.checks["vision"].setText("图片/视频/文件" if vision_ok else "图片/视频/文件（不支持）")
+        if not vision_ok:
+            self.checks["vision"].setChecked(False)
+        self.vision_hint.setText(
+            ("跟随聊天：" if not self.vision_combo.currentData() else "独立 Provider：")
+            + (get_provider(vision_id).name if get_provider(vision_id) else vision_id)
+            + ("，支持视觉。" if vision_ok else "，不支持视觉，请换一个。")
+            + (" 需要填独立 Key。" if self.vision_combo.currentData() and not get_key(self.ctx.data_dir, f"cap_vision_{vision_id}") else "")
+        )
+
+        asr_id = self.asr_combo.currentData()
+        self.voice_combo.setEnabled(asr_id == "local")
+        self.asr_model.setEnabled(asr_id != "local")
+        self.asr_key.setEnabled(asr_id != "local")
+        if asr_id != "local":
+            akey = get_key(self.ctx.data_dir, f"cap_asr_{asr_id}")
+            self.asr_key.setPlaceholderText("已保存，留空不修改" if akey else "粘贴 ASR Key")
+        tts_id = self.tts_combo.currentData()
+        self.voice_name.setEnabled(tts_id == "edge")
+        self.tts_model.setEnabled(tts_id != "edge")
+        self.tts_voice.setEnabled(tts_id != "edge")
+        self.tts_key.setEnabled(tts_id != "edge")
+        if tts_id != "edge":
+            tkey = get_key(self.ctx.data_dir, f"cap_tts_{tts_id}")
+            self.tts_key.setPlaceholderText("已保存，留空不修改" if tkey else "粘贴 TTS Key")
+        self.voice_hint.setText("语音识别/合成失败会直接报错，不会偷偷回退本地。")
 
     def on_show(self) -> None:
+        self._refresh_capability_providers()
         if not self.archive:
             self.count_label.setText("归档未开启")
             return
@@ -310,25 +397,38 @@ class CapabilitiesPage(BasePage):
 
     def _save(self) -> None:
         f = self.ctx.cfg.features
-        provider = get_provider(self.provider_combo.currentData())
-        if provider is not None:
-            old_provider = self.ctx.cfg.llm.provider_id
-            old_key = self.ctx.cfg.llm.api_key
-            self.ctx.cfg.llm.provider_id = provider.id
-            self.ctx.cfg.llm.base_url = provider.base_url
-            self.ctx.cfg.llm.model = provider.chat_model
-            self.ctx.cfg.llm.api_key = old_key if provider.id == old_provider else ""
-            if provider.vision_model:
+        vision_id = self.vision_combo.currentData()
+        f.vision_provider = vision_id
+        if vision_id:
+            provider = get_provider(vision_id)
+            if provider and "vision" in provider.capabilities:
                 f.vision_model = provider.vision_model
-            if "vision" not in provider.capabilities:
+                key = self.vision_key.text().strip()
+                if key:
+                    set_key(self.ctx.data_dir, f"cap_vision_{vision_id}", key)
+                    self.vision_key.clear()
+            else:
                 f.vision = False
                 self.checks["vision"].setChecked(False)
-            key = self.provider_key.text().strip()
+
+        f.asr_provider = self.asr_combo.currentData()
+        f.asr_model = self.asr_model.text().strip()
+        if f.asr_provider != "local":
+            key = self.asr_key.text().strip()
             if key:
-                set_key(self.ctx.data_dir, f"llm_{provider.id}", key)
-                self.ctx.cfg.llm.api_key = ""
-                self.provider_key.clear()
-                self.provider_key.setPlaceholderText("已保存，留空不修改")
+                set_key(self.ctx.data_dir, f"cap_asr_{f.asr_provider}", key)
+                self.asr_key.clear()
+        f.tts_provider = self.tts_combo.currentData()
+        f.tts_model = self.tts_model.text().strip()
+        f.tts_voice = self.tts_voice.text().strip()
+        if f.tts_provider != "edge":
+            key = self.tts_key.text().strip()
+            if key:
+                set_key(self.ctx.data_dir, f"cap_tts_{f.tts_provider}", key)
+                self.tts_key.clear()
+        f.voice_model = self.voice_combo.currentText()
+        f.voice_name = self.voice_name.text().strip() or "zh-CN-XiaoxiaoNeural"
+
         for name, box in self.checks.items():
             setattr(f, name, box.isChecked())
         f.search_daily_limit = self.search_limit.value()

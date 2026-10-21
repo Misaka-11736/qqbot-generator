@@ -19,9 +19,15 @@ class FeatureConfig:
     vision: bool = False  # 识图
     vision_model: str = "qwen3-vl-plus"
     voice_in: bool = False  # 语音识别
-    voice_model: str = "small"
-    voice_name: str = "zh-CN-XiaoxiaoNeural"
+    voice_model: str = "small"  # 本地 faster-whisper 尺寸
+    voice_name: str = "zh-CN-XiaoxiaoNeural"  # Edge-TTS 音色
     voice_out: bool = False  # 语音合成
+    vision_provider: str = ""  # 空=跟随聊天 Provider
+    asr_provider: str = "local"  # local / openai / groq / siliconflow
+    asr_model: str = ""  # 云端 ASR 模型，空=Provider 默认
+    tts_provider: str = "edge"  # edge / openai / groq / siliconflow
+    tts_model: str = ""  # 云端 TTS 模型
+    tts_voice: str = ""  # 云端 TTS 音色
 
     search_provider: str = "brave"  # brave / tavily / duckduckgo
     search_daily_limit: int = 50

@@ -17,7 +17,7 @@
 
 ---
 
-**QQ Bot生成器**是一个 Windows 桌面应用：填好模型 Key，点几下鼠标，就能把一个小号 QQ 变成有人格、有记忆、能被你「调智商」的 AI 聊天搭子。
+**QQ Bot生成器**是一个 Windows 桌面应用：选好 API Provider、填好 Key，点几下鼠标，就能把一个小号 QQ 变成有人格、有记忆、能被你「调智商」的 AI 聊天搭子。
 
 它把整条链路包进了一个界面里：**QQ（NapCat）→ OneBot 11 → 机器人内核 → 大模型**。不用记命令，不用改配置文件，不用碰命令行。
 
@@ -26,7 +26,7 @@
 ## 它能做什么
 
 - **一键启动 / 停止机器人**，实时状态、PID、运行时长、日志都在界面上；
-- **接任何 OpenAI 兼容模型**：DeepSeek、通义千问、智谱 GLM、本地 Ollama，带连通性测试；
+- **Provider 可选**：DeepSeek、Qwen、SiliconFlow、OpenRouter、OpenAI、Groq、智谱、Ollama；看图/语音/搜索可独立绑定；
 - **人格可编辑**：三套预设（损友 / 软妹 / 学霸），Markdown 直接改，保存即生效；
 - **智商 1~200**：不只是数字，它会改变提示词、温度和回复长度——调低会变笨变甜，调高会开始挑你毛病；
 - **NapCat 一条龙**：自动检测、写入 OneBot 配置、以管理员身份启动、打开 WebUI、下载安装包；
@@ -50,11 +50,11 @@
 1. 到 Releases 下载 `QQ Bot生成器-安装包.exe`；
 2. 双击安装（按用户安装，不需要管理员权限）；
 3. 打开后按首页的「三步开聊」走：
-   - **模型页**：粘贴 API Key，点「测试连接」；
+   - **模型页**：选文字 Provider，填 Key，点「测试连接」；
    - **NapCat 页**：配置连接 → 启动 NapCat → 用登录着小号的手机扫码；
    - **首页**：点「启动机器人」，日志出现 `NapCat 已接入` 就通了。
 
-> 没有 Key 也能玩：默认会走离线兜底大脑，人格、智商、指令全部可用。
+> 没有 Key 也能玩：默认走离线兜底大脑；新用户只开聊天与归档，其他能力按需打开。
 
 ### 方式二：从源码运行
 
@@ -75,11 +75,12 @@ python run.py
 | --- | --- |
 | 首页 | 一键启动、状态总览、快速入口、最近日志 |
 | 机器人 | 名字、管理员 QQ、作用域（私聊/群聊/群名单）、接入方式、聊天频率 |
-| 模型 | OpenAI 兼容接口、Key、采样参数、连通性测试 |
+| 模型 | 文字 Provider、Key、采样参数、连通性测试（只管聊天） |
 | 人格 | 三套预设、人格编辑器、智商滑杆、试一句 |
+| 能力 | 看图/语音/搜索 Provider 绑定、能力开关、Key、限额 |
 | NapCat | 检测/下载/配置/启动 NapCat，打开 WebUI |
 | 试聊 | 不登录 QQ 的本地聊天窗口 |
-| 日志 | 实时跟随 `logs/bot-*.log` |
+| 日志 | 实时跟随 `logs/bot.log` |
 | 设置 | 自检、数据目录、导入导出、开机自启 |
 | 关于 | 版本、链接、致谢与免责声明 |
 
@@ -90,12 +91,12 @@ QQ 小号
   │  NapCat 注入 QQNT，把消息翻译成 OneBot 11
   ▼
 NapCat ── WebSocket ──► qqbot_core（Python）
-                          │  OpenAI 兼容接口
+                          │  聊天 Provider（OpenAI 兼容）
                           ▼
                       大模型 API
 ```
 
-- `qqbot_core`：与界面无关的机器人内核（OneBot 连接、人格、记忆、指令、限流）；
+- `qqbot_core`：与界面无关的机器人内核（OneBot 连接、人格、记忆、意图/能力、限流）；
 - `qqbot_generator`：PySide6 界面，负责配置、进程、NapCat、日志和试聊；
 - 打包后只有一个 exe：GUI 模式开界面，`--run-bot` 模式跑内核，界面用子进程拉起它。
 
@@ -107,7 +108,8 @@ NapCat ── WebSocket ──► qqbot_core（Python）
 
 ```
 %LOCALAPPDATA%\QQBotGenerator\
-├─ config.toml          # 配置（含 API Key，别外传）
+├─ config.toml          # 配置（不含 Key）
+├─ secrets.json         # DPAPI 加密的 Provider Key
 ├─ memory.json          # 聊天记忆、每个群的智商
 ├─ chat_memory.json     # 试聊记录
 ├─ prompts\             # 人格 Markdown
@@ -137,6 +139,7 @@ python -m qqbot_generator --screenshot build\shots
 
 - 新页面：在 `src/qqbot_generator/pages/` 加一个 `BasePage` 子类，在 `pages/__init__.py` 的 `PAGES` 里加一行；
 - 新设置：在 `qqbot_core/config.py` 加字段，在对应页面加控件；
+- 新 Provider：在 `qqbot_core/providers.py` 注册能力与默认模型；
 - 新能力：在 `services/` 加服务，页面只依赖 `AppContext`。
 
 ## 打包
@@ -158,7 +161,7 @@ powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1
 - **NapCat 启动一闪而过**：用管理员身份开 cmd，进 `NapCat\app` 跑 `launcher.bat` 看报错；
 - **QQ 版本兼容性提示**：NapCat 按 QQ 9.9.22 打包，旧版本可能提示；能登录就先用，异常就换一键包；
 - **群里 @ 不回**：确认 @ 的是小号；在「人格」页把参与门槛调低或关闭静音；每人每分钟限 8 次；
-- **模型报 401/402**：Key 错或余额不足，看「日志」页的具体错误。
+- **模型报 401/402**：Key 错或余额不足，模型页会翻译成中文原因。
 
 更多见 [docs/常见问题.md](docs/常见问题.md)。
 

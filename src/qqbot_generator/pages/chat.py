@@ -89,7 +89,7 @@ class ChatPage(BasePage):
         )
         row.addWidget(self.iq_label)
         row.addStretch(1)
-        tip = QLabel("支持 /智商 20、/人格 soft、/重置")
+        tip = QLabel("直接聊天即可；群里只保留管理员 /reset")
         tip.setObjectName("hint")
         row.addWidget(tip)
         reset = small_button("清空对话", "secondary")

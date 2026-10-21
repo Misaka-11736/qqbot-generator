@@ -186,6 +186,12 @@ class Config:
             f"voice_in = {str(self.features.voice_in).lower()}",
             f"voice_out = {str(self.features.voice_out).lower()}",
             f"voice_model = {_q(self.features.voice_model)}",
+            f"vision_provider = {_q(self.features.vision_provider)}",
+            f"asr_provider = {_q(self.features.asr_provider)}",
+            f"asr_model = {_q(self.features.asr_model)}",
+            f"tts_provider = {_q(self.features.tts_provider)}",
+            f"tts_model = {_q(self.features.tts_model)}",
+            f"tts_voice = {_q(self.features.tts_voice)}",
             f"voice_name = {_q(self.features.voice_name)}",
             f"search_provider = {_q(self.features.search_provider)}",
             f"search_daily_limit = {self.features.search_daily_limit}",
@@ -359,6 +365,12 @@ def _apply(cfg: Config, raw: dict[str, Any]) -> None:
     cfg.features.reply_format = str(_pick(feat, "reply_format", cfg.features.reply_format))
     cfg.features.vision_model = str(_pick(feat, "vision_model", cfg.features.vision_model))
     cfg.features.voice_model = str(_pick(feat, "voice_model", cfg.features.voice_model))
+    cfg.features.vision_provider = str(_pick(feat, "vision_provider", cfg.features.vision_provider))
+    cfg.features.asr_provider = str(_pick(feat, "asr_provider", cfg.features.asr_provider))
+    cfg.features.asr_model = str(_pick(feat, "asr_model", cfg.features.asr_model))
+    cfg.features.tts_provider = str(_pick(feat, "tts_provider", cfg.features.tts_provider))
+    cfg.features.tts_model = str(_pick(feat, "tts_model", cfg.features.tts_model))
+    cfg.features.tts_voice = str(_pick(feat, "tts_voice", cfg.features.tts_voice))
     cfg.features.voice_name = str(_pick(feat, "voice_name", cfg.features.voice_name))
     cfg.features.voice_threshold = int(_pick(feat, "voice_threshold", cfg.features.voice_threshold))
     cfg.features.image_threshold = int(_pick(feat, "image_threshold", cfg.features.image_threshold))

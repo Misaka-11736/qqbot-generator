@@ -23,19 +23,29 @@ DOC = """
 </ol>
 <p>普通聊天不会因为出现“张、图、搜”这些字就被劫持。</p>
 
+<h3>Provider 怎么分工</h3>
+<p>模型页只配置文字聊天 Provider；能力页负责看图、语音和搜索。聊天 Provider 在能力页只读，避免两边互相覆盖。</p>
+<ul>
+<li><b>看图</b>：默认跟随聊天 Provider；聊天 Provider 不支持视觉时，可以单独选 Qwen/OpenAI/SiliconFlow/OpenRouter/智谱/Ollama，并填独立 Key；</li>
+<li><b>语音识别</b>：本地 faster-whisper，或 OpenAI/Groq/SiliconFlow；</li>
+<li><b>语音合成</b>：本地 Edge-TTS，或 OpenAI/Groq/SiliconFlow；</li>
+<li><b>搜索</b>：Brave / Tavily / DuckDuckGo，完全独立。</li>
+</ul>
+<p>所有 Provider Key 都用 DPAPI 加密存 secrets.json，不写进 config.toml。云端语音失败会直接报错，不回退本地。</p>
+
 <h3>能力与触发</h3>
 <table border="1" cellspacing="0" cellpadding="6">
 <tr><th>能力</th><th>自然说法</th><th>结果</th></tr>
 <tr><td>网页搜索</td><td>搜一下 猎鹰队比赛</td><td>2~4 句口语结论，不贴链接</td></tr>
 <tr><td>图片任务</td><td>搜张丑猫发来 / 来张猫图</td><td>Brave 图片搜索 → 下载 cache → 发图</td></tr>
-<tr><td>识图</td><td>发图并问“这是啥”</td><td>Qwen3-VL 看图回答</td></tr>
-<tr><td>语音</td><td>发语音 / 用语音说晚安</td><td>Whisper 转文字 / Edge-TTS 发语音条</td></tr>
+<tr><td>识图</td><td>发图并问“这是啥”</td><td>当前视觉 Provider 看图回答</td></tr>
+<tr><td>语音</td><td>发语音 / 用语音说晚安</td><td>本地 Whisper/Edge-TTS，或云端 ASR/TTS</td></tr>
 <tr><td>总结</td><td>总结最近 300 条</td><td>分段摘要当前会话</td></tr>
 <tr><td>缓存</td><td>设置 → 缓存</td><td>查看占用、打开目录、一键清理</td></tr>
 </table>
 
 <h3>配置怎么生效</h3>
-<p>人格页所有滑杆/开关改动后 350ms 写入 config.toml；机器人每秒检查文件变更并热加载，下一条消息生效。IQ 以当前人格卡为唯一权威，不再读会话里的旧值。</p>
+<p>人格页所有滑杆/开关改动后 350ms 写入 config.toml；机器人每秒检查文件变更并热加载，下一条消息生效。IQ 以当前人格卡为唯一权威，不再读会话里的旧值。新用户默认只开聊天与归档，其他能力在能力页按需开启。</p>
 
 <h3>命令</h3>
 <p>群聊只保留 <code>/reset</code>，且只有管理员能执行；其他 <code>/xxx</code> 一律当普通聊天。</p>
